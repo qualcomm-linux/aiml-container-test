@@ -19,13 +19,12 @@ RUN cd ~/build/mesa ; \
     meson install -C builddir/
 
 # Yeah....
-RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/6.5.0/bazel-6.5.0-linux-arm64
+RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.0/bazel-7.4.0-linux-arm64
 RUN chmod +x /usr/local/bin/bazel
 
 RUN cd ~/build ; \
     git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
 RUN cd ~/build/tensorflow ; \ 
-    git checkout ae4d2a4eb9047 -b testing ; \
     bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
