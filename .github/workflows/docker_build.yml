@@ -4,8 +4,7 @@ on:
 
 jobs:
   build:
-    runs-on:
-      labels: [ self-hosted, qcom-u2404, arm64 ]
+    runs-on: [ self-hosted, qcom-u2404, arm64 ]
     steps:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
