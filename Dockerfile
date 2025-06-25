@@ -18,7 +18,9 @@ RUN cd ~/build/mesa ; \
     meson compile -C builddir/ ; \
     meson install -C builddir/
 
-# Remove ~/build/mesa?
+# Remove ~/build/mesa
+RUN cd ~/; \
+    rm -rf ~/build/mesa
 
 # Yeah....
 RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.0/bazel-7.4.0-linux-arm64
@@ -31,6 +33,7 @@ RUN cd ~/build/tensorflow ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
 
+# This likely needs a new place so we can delete ~/build/tensorflow
 RUN cd ~/build/tensorflow ; \
     cp tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp bazel-bin/tensorflow/lite/examples/label_image/ ; \
     cd bazel-bin/tensorflow/lite/examples/label_image ; \
