@@ -5,8 +5,7 @@ on:
 jobs:
   build:
     runs-on:
-      group: GHA-Kernel-SelfHosted-RG
-      labels: [ self-hosted, kernel-prd-u2404-arm64-xlrg-od-ephem ]
+      labels: [ self-hosted, qcom-u2404, arm64 ]
     steps:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
