@@ -1,0 +1,21 @@
+name: docker build
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on:
+      group: GHA-Kernel-SelfHosted-RG
+      labels: [ self-hosted, kernel-prd-u2404-arm64-xlrg-od-ephem ]
+    steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        push: false
+        tags: aiml-container-test:latest
+        context: aiml-container
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
