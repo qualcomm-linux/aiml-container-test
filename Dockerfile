@@ -18,6 +18,8 @@ RUN cd ~/build/mesa ; \
     meson compile -C builddir/ ; \
     meson install -C builddir/
 
+# Remove ~/build/mesa?
+
 # Yeah....
 RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.0/bazel-7.4.0-linux-arm64
 RUN chmod +x /usr/local/bin/bazel
