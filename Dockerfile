@@ -8,7 +8,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y build-dep mesa
-RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip libegl-dev libgles-dev
 
 RUN mkdir ~/build ; \
     cd ~/build ; \
