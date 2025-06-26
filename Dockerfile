@@ -40,6 +40,15 @@ RUN cd ~/build/tensorflow ; \
     wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip ; \
     unzip mobilenet_v1_224_android_quant_2017_11_08.zip 
 
+RUN mv ~/build/tensorflow/bazel-bin/tensorflow ~
+
+# Remove build folder
+RUN rm -rf ~/build
 
 # Remove cached files
+RUN rm ~/.cache -rf
 RUN apt clean
+
+RUN cd ~/tensorflow/lite/examples/label_image ; \
+    ./label_image --image=grace_hopper.bmp
+
