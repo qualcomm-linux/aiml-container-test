@@ -1,9 +1,9 @@
-FROM debian:trixie-slim
+FROM debian:trixie-slim AS build
 
 # Add deb-src for everything
 RUN sed -Ei 's/^Types: deb$/Types: deb deb-src/'  /etc/apt/sources.list.d/debian.sources
 
-# Update & upgrade
+# Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install build tools
@@ -16,7 +16,8 @@ RUN mkdir ~/build ; \
 RUN cd ~/build/mesa ; \
     meson setup builddir/ -Dgallium-drivers=freedreno -Dvulkan-drivers=freedreno -Dgallium-rusticl=true -Dprefix=/usr/ ; \
     meson compile -C builddir/ ; \
-    meson install -C builddir/
+    meson install -C builddir/ ; \
+    meson install -C builddir/ --destdir=/root/mesa-install
 
 # Remove ~/build/mesa
 RUN cd ~/; \
@@ -49,6 +50,28 @@ RUN rm -rf ~/build
 RUN rm ~/.cache -rf
 RUN apt clean
 
+#######################################################################
+
+FROM debian:trixie-slim AS deploy
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install the basic mesa dependencies to make our build work
+RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-opencl-icd mesa-teflon-delegate 
+
+# Install mesa-git build, we don't have a proper debian package for it
+COPY --from=build /root/mesa-install /
+
+# Install tensorflow build, also no proper debian package
+COPY --from=build /root/tensorflow /root/tensorflow
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+# Test tensorflow
 RUN cd ~/tensorflow/lite/examples/label_image ; \
     ./label_image --image=grace_hopper.bmp
+
 
