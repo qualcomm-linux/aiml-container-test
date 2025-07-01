@@ -10,6 +10,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y build-dep mesa
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip libegl-dev libgles-dev
 
+RUN git config --global user.email "container@nohardware.com"
+RUN git config --global user.name "Container Entity"
+
 RUN mkdir ~/build ; \
     cd ~/build ; \
     git clone https://gitlab.freedesktop.org/mesa/mesa.git --single-branch --depth 10 -b main
@@ -28,7 +31,9 @@ RUN chmod +x /usr/local/bin/bazel
 
 RUN cd ~/build ; \
     git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
-RUN cd ~/build/tensorflow ; \ 
+COPY 0001-FIXES.patch /root/build/tensorflow
+RUN cd ~/build/tensorflow ; \
+    git am 0001-FIXES.patch ; \ 
     bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
