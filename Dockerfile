@@ -16,8 +16,7 @@ RUN mkdir ~/build ; \
 RUN cd ~/build/mesa ; \
     meson setup builddir/ -Dgallium-drivers=freedreno -Dvulkan-drivers=freedreno -Dgallium-rusticl=true -Dprefix=/usr/ ; \
     meson compile -C builddir/ ; \
-    meson install -C builddir/ ; \
-    meson install -C builddir/ --destdir=/root/mesa-install
+    meson install -C builddir/
 
 # Remove ~/build/mesa
 RUN cd ~/; \
@@ -56,12 +55,23 @@ FROM debian:trixie-slim AS deploy
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt -y install wget curl unzip
+
+# Pull mesa builds from Dmitry's OBS
+RUN wget https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/Release.key -O /etc/apt/trusted.gpg.d/obs-lumag.asc
+COPY <<EOF /etc/apt/sources.list.d/obs.lumag.sources
+Types: deb deb-src 
+URIs: https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/
+Suites: /
+Components:
+Signed-By: /etc/apt/trusted.gpg.d/obs-lumag.asc
+EOF
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-opencl-icd mesa-teflon-delegate 
-
-# Install mesa-git build, we don't have a proper debian package for it
-COPY --from=build /root/mesa-install /
+RUN DEBIAN_FRONTEND=noninteractive apt -y install libgl1-mesa-dri mesa-opencl-icd
 
 # Install tensorflow build, also no proper debian package
 COPY --from=build /root/tensorflow /root/tensorflow
