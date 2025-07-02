@@ -79,8 +79,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install the basic mesa dependencies to make our build work
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri mesa-opencl-icd
 
-# Install tensorflow build, also no proper debian package
+# Install tensorflow build, no proper debian package
 COPY --from=build /root/tensorflow /root/tensorflow
+COPY run-tflite.sh /
+RUN chmod +x /run-tflite.sh
 
 # Remove cached files
 RUN rm ~/.cache -rf
