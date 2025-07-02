@@ -60,7 +60,8 @@ FROM debian:trixie-slim AS deploy
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt -y install wget curl unzip
+RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
 
 # Pull mesa builds from Dmitry's OBS
 RUN wget https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/Release.key -O /etc/apt/trusted.gpg.d/obs-lumag.asc
@@ -76,7 +77,7 @@ EOF
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install libgl1-mesa-dri mesa-opencl-icd
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri mesa-opencl-icd
 
 # Install tensorflow build, also no proper debian package
 COPY --from=build /root/tensorflow /root/tensorflow
@@ -89,4 +90,4 @@ RUN apt clean
 RUN cd ~/tensorflow/lite/examples/label_image ; \
     ./label_image --image=grace_hopper.bmp
 
-
+ENTRYPOINT ["/bin/bash"]
