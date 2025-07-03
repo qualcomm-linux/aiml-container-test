@@ -63,7 +63,7 @@ index 54c0050781e..e3b0b6e5509 100644
    args_.AddFloat("mask_w");
  
    std::string c;
-+  c += "__attribute__((work_group_size_hint(" + std::to_string(work_group_size_.x) +
++  c += "__attribute__((reqd_work_group_size(" + std::to_string(work_group_size_.x) +
 +                                         ", " + std::to_string(work_group_size_.y) +
 +                                         ", " + std::to_string(work_group_size_.z) + ")))\n";
    c += "MAIN_FUNCTION($0) {\n";
