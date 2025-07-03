@@ -7,7 +7,7 @@ This repository hosts a Dockerfile and its dependencies that aims to build a con
 This isn't using any fancy features, so a regular build command will work:
 
 ```bash
-docker build .
+docker build  --platform linux/arm64 .
 ```
 
 ## How to use the container
