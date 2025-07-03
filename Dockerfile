@@ -1,5 +1,7 @@
 FROM debian:trixie-slim AS build
 
+RUN mkdir ~/build
+
 # Add deb-src for everything
 RUN sed -Ei 's/^Types: deb$/Types: deb deb-src/'  /etc/apt/sources.list.d/debian.sources
 
@@ -7,23 +9,27 @@ RUN sed -Ei 's/^Types: deb$/Types: deb deb-src/'  /etc/apt/sources.list.d/debian
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install build tools
-RUN DEBIAN_FRONTEND=noninteractive apt -y build-dep mesa
-RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip libegl-dev libgles-dev
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
+
+# Pull mesa builds from Dmitry's OBS
+RUN wget https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/Release.key -O /etc/apt/trusted.gpg.d/obs-lumag.asc
+COPY <<EOF /etc/apt/sources.list.d/obs.lumag.sources
+Types: deb deb-src 
+URIs: https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/
+Suites: /
+Components:
+Signed-By: /etc/apt/trusted.gpg.d/obs-lumag.asc
+EOF
+
+# Update again
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install the basic mesa dependencies to make our build work
+RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev
+
 
 RUN git config --global user.email "container@nohardware.com"
 RUN git config --global user.name "Container Entity"
-
-RUN mkdir ~/build ; \
-    cd ~/build ; \
-    git clone https://gitlab.freedesktop.org/mesa/mesa.git --single-branch --depth 10 -b main
-RUN cd ~/build/mesa ; \
-    meson setup builddir/ -Dgallium-drivers=freedreno -Dvulkan-drivers=freedreno -Dgallium-rusticl=true -Dprefix=/usr/ ; \
-    meson compile -C builddir/ ; \
-    meson install -C builddir/
-
-# Remove ~/build/mesa
-RUN cd ~/; \
-    rm -rf ~/build/mesa
 
 # Yeah....
 RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.0/bazel-7.4.0-linux-arm64
