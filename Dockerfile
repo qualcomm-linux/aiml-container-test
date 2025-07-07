@@ -39,7 +39,9 @@ RUN cd ~/build ; \
     git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
 COPY 0001-FIXES.patch /root/build/tensorflow
 RUN cd ~/build/tensorflow ; \
-    git am 0001-FIXES.patch ; \ 
+    git remote add robclark https://github.com/robclark/tensorflow.git ; \
+    git fetch robclark rusticl-fixes ; \
+    git merge robclark/rusticl-fixes && git rebase origin/master ; \ 
     bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
