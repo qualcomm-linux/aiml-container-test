@@ -62,6 +62,37 @@ RUN apt clean
 
 #######################################################################
 
+FROM debian:bookworm-slim AS models
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
+
+# Install pip to fetch qai_hub, and do the pip thing where you need to break the system
+RUN DEBIAN_FRONTEND=noninteractive apt -y install python3-pip python3-backoff python3-deprecation python3-numpy python3-protobuf python3-requests python3-requests-toolbelt python3-wcwidth python3-idna python3-urllib3 python3-certifi python3-jmespath 
+# Install extra build deps
+RUN DEBIAN_FRONTEND=noninteractive apt -y install gcc libc++-dev
+
+# Install Qualcomm AI hub infrastructure - You CANNOT have 'git' installed, the mmcv install will hang.
+RUN pip install --break-system-packages qai-hub mmcv ultralytics
+
+#   Install the basic mesa dependencies to make the model export work
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install git libgl1 libglib2.0-0 libgl1-mesa-dri mesa-opencl-icd
+
+# Install Yolo-X"  model
+RUN pip install --break-system-packages "qai-hub-models[yolox]"
+RUN python3 -m qai_hub_models.models.yolox.export --target-runtime tflite --precision float  
+RUN mkdir -p /root/models ; mv /build/yolox/ /root/models/
+
+# Uninstall qai-hub-models, then reinstall it, yay python!
+RUN pip uninstall --break-system-package --no-input -y "qai-hub-models"
+RUN pip install --break-system-packages "qai-hub-models[hrnet_pose]"
+#RUN python3 -m qai_hub_models.models.hrnet_pose.export --target-runtime tflite --precision float  
+
+
+#######################################################################
+
 FROM debian:trixie-slim AS deploy
 
 # Update
@@ -84,6 +115,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri mesa-opencl-icd
+
+# Copy models from models container
+COPY --from=models /root/models /root/models
 
 # Install tensorflow build, no proper debian package
 COPY --from=build /root/tensorflow /root/tensorflow
