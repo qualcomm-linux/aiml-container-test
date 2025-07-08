@@ -37,7 +37,6 @@ RUN chmod +x /usr/local/bin/bazel
 
 RUN cd ~/build ; \
     git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
-COPY 0001-FIXES.patch /root/build/tensorflow
 RUN cd ~/build/tensorflow ; \
     git remote add robclark https://github.com/robclark/tensorflow.git ; \
     git fetch robclark rusticl-fixes ; \
@@ -124,7 +123,8 @@ COPY --from=models /root/models /root/models
 # Install tensorflow build, no proper debian package
 COPY --from=build /root/tensorflow /root/tensorflow
 COPY run-tflite.sh /
-RUN chmod +x /run-tflite.sh
+COPY benchmark-tflite.sh /
+RUN chmod +x /*tflite.sh
 
 # Remove cached files
 RUN rm ~/.cache -rf
