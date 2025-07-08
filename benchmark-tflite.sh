@@ -11,8 +11,8 @@ cd /root/tensorflow/lite/tools/benchmark/
 
 set -x
 for model in $(find /root/models -name "*.tflite") ; do
-#	./benchmark_model --graph=${model} --enable_op_profiling=true --use_xnnpack=true --num_threads=4 --max_sec=300 --profiling_output_csv_file=${model}.csv  --use_gpu=true | tee ${model}-log.txt
-#	./benchmark_model --graph=${model} --enable_op_profiling=true --use_xnnpack=true --num_threads=4 --max_sec=300 --profiling_output_csv_file=${model}.csv  --use_gpu=false | tee ${model}-log.txt
-	./benchmark_model --graph=${model} --use_gpu=true | tee ${model}-log.txt
-	./benchmark_model --graph=${model} --use_gpu=false | tee ${model}-log.txt
+#	./benchmark_model --graph=${model} --enable_op_profiling=true --use_xnnpack=true --num_threads=4 --max_sec=300 --profiling_output_csv_file=${model}-gpu.csv  --use_gpu=true | tee ${model}-gpu-log.txt
+#	./benchmark_model --graph=${model} --enable_op_profiling=true --use_xnnpack=true --num_threads=4 --max_sec=300 --profiling_output_csv_file=${model}-cpu.csv  --use_gpu=false | tee ${model}-cpu-log.txt
+	./benchmark_model --graph=${model} --use_gpu=true | tee ${model}-gpu-log.txt
+	./benchmark_model --graph=${model} --use_gpu=false | tee ${model}-cpu-log.txt
 done
