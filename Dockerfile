@@ -41,10 +41,12 @@ RUN chmod +x /usr/local/bin/bazel
 
 RUN cd ~/build ; \
     git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
+COPY 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch /root/build/tensorflow/
 RUN cd ~/build/tensorflow ; \
     git remote add robclark https://github.com/robclark/tensorflow.git ; \
     git fetch robclark rusticl-fixes ; \
-    git merge robclark/rusticl-fixes && git rebase origin/master ; \ 
+    git merge robclark/rusticl-fixes && git rebase origin/master ; \
+    git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch ; \ 
     bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
