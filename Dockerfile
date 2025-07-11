@@ -11,14 +11,18 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
 
-# Pull mesa builds from Dmitry's OBS
-RUN wget https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/Release.key -O /etc/apt/trusted.gpg.d/obs-lumag.asc
-COPY <<EOF /etc/apt/sources.list.d/obs.lumag.sources
-Types: deb deb-src 
-URIs: https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/
-Suites: /
-Components:
-Signed-By: /etc/apt/trusted.gpg.d/obs-lumag.asc
+# Pull mesa builds from not Dmitry's OBS
+RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
+COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
+# QArtifactory qsc-deb-releases repository
+# NB: publishing Sources indices for deb-src isn't supported by Artifactory,
+# but sources are published with other packages files
+Types: deb
+URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
+Suites: trixie-overlay
+Components: main
+Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
+Enabled: yes
 EOF
 
 # Update again
@@ -101,14 +105,18 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
 
-# Pull mesa builds from Dmitry's OBS
-RUN wget https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/Release.key -O /etc/apt/trusted.gpg.d/obs-lumag.asc
-COPY <<EOF /etc/apt/sources.list.d/obs.lumag.sources
-Types: deb deb-src 
-URIs: https://download.opensuse.org/repositories/home:/lumag_lumag/Debian_Testing/
-Suites: /
-Components:
-Signed-By: /etc/apt/trusted.gpg.d/obs-lumag.asc
+# Pull mesa builds not from Dmitry's OBS
+RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
+COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
+# QArtifactory qsc-deb-releases repository
+# NB: publishing Sources indices for deb-src isn't supported by Artifactory,
+# but sources are published with other packages files
+Types: deb
+URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
+Suites: trixie-overlay
+Components: main
+Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
+Enabled: yes
 EOF
 
 # Update
