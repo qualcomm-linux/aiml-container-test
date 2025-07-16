@@ -11,7 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
 
-# Pull mesa builds from not Dmitry's OBS
+# Pull mesa builds from Qartifactory repo
 RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
 COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
 # QArtifactory qsc-deb-releases repository
@@ -107,7 +107,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
 
-# Pull mesa builds not from Dmitry's OBS
+# Pull mesa builds from Qartifactory repo
 RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
 COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
 # QArtifactory qsc-deb-releases repository
