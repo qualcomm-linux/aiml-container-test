@@ -134,7 +134,8 @@ COPY --from=models /root/models /root/models
 COPY --from=build /root/tensorflow /root/tensorflow
 COPY run-tflite.sh /
 COPY benchmark-tflite.sh /
-RUN chmod +x /*tflite.sh
+COPY install-gstreamer.sh /
+RUN chmod +x /*.sh
 
 # Remove cached files
 RUN rm ~/.cache -rf
