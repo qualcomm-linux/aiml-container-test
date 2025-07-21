@@ -48,6 +48,7 @@ RUN cd ~/build/tensorflow ; \
     git merge robclark/rusticl-fixes && git rebase origin/master ; \
     git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch ; \ 
     bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
+    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/c:libtensorflowlite_c.so ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
     bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
 
