@@ -90,6 +90,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install git li
 
 # Install Yolo-X"  model
 RUN pip install --break-system-packages "qai-hub-models[yolox]"
+RUN pip install --break-system-packages "pyarrow==20.0.0"
 RUN python3 -m qai_hub_models.models.yolox.export --target-runtime tflite --precision float  
 RUN mkdir -p /root/models ; mv /build/yolox/ /root/models/
 
