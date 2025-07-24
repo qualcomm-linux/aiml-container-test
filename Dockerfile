@@ -29,28 +29,32 @@ EOF
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev
+RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev cmake ninja-build
 
 
 RUN git config --global user.email "container@nohardware.com"
 RUN git config --global user.name "Container Entity"
 
-# Yeah....
-RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.0/bazel-7.4.0-linux-arm64
-RUN chmod +x /usr/local/bin/bazel
-
+# Fetch & patch tflite
 RUN cd ~/build ; \
     git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
-COPY 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch /root/build/tensorflow/
+COPY patches/0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch /root/build/tensorflow/
+COPY patches/0002-PATCH-tensorflow-c-library-enable-delegates.patch /root/build/tensorflow/
 RUN cd ~/build/tensorflow ; \
     git remote add robclark https://github.com/robclark/tensorflow.git ; \
     git fetch robclark rusticl-fixes ; \
     git merge robclark/rusticl-fixes && git rebase origin/master ; \
-    git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch ; \ 
-    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
+    git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch
+
+# Grab bazel binaries and start the build.
+RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.1/bazel-7.4.1-linux-arm64
+RUN chmod +x /usr/local/bin/bazel
+RUN cd ~/build/tensorflow &&  bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
     bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/c:libtensorflowlite_c.so ; \
-    bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/tools/benchmark:benchmark_model ; \
-    bazel build --copt -DCL_DELEGATE_NO_GL  //tensorflow/lite/examples/label_image:label_image
+    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so \
+    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/tools/benchmark:benchmark_model ; \
+    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/examples/label_image:label_image
+RUN cd ~/build/tensorflow && bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so
 
 # This likely needs a new place so we can delete ~/build/tensorflow
 RUN cd ~/build/tensorflow ; \
@@ -127,7 +131,7 @@ EOF
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri mesa-opencl-icd clpeak
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
 
 # Copy models from models container
 COPY --from=models /root/models /root/models
