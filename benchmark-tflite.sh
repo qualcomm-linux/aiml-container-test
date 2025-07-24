@@ -3,6 +3,9 @@
 # Add symlink for libOpenCL, tflite hardcodes the .so, it doesn't properly dynamically link to .so.X
 ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/aarch64-linux-gnu/libOpenCL.so
 
+# Add a symlink so EIM files can use this
+ln -sf /root/tensorflow/lite/delegates/gpu/libtensorflowlite_gpu_delegate.so /lib/aarch64-linux-gnu/
+
 # For CPUFreq to use performance governer, run outside the container
 echo "Run the following outside the container to have the CPUs run at full tilt:"
 echo 'for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor ; do echo "performance" > $i ; done'
