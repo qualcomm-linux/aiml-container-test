@@ -10,12 +10,12 @@ for model in $(find . -name "*.tflite") ; do
 
 	if grep -q ${modelname} /tmp/models-analyzed ; then continue ; fi
 
-	echo "${modelname} results in microseconds:"
-	for delegate in cpu gpu ; do
-		for precision in fp32 fp16 ; do
+	echo "${modelname} results in miliseconds:"
+	for precision in fp32 fp16 ; do
+		for delegate in cpu gpu ; do
 			logfile="$(find . -name ${modelname}_${precision}.tflite-${delegate}-log.txt)"
 			if [ -e "${logfile}" ] ; then
-				echo -n "	${delegate} ${precision}: " ; grep timings ${logfile} | awk -F: '{print $7}'
+				echo -n "	${delegate} ${precision}: " ; grep timings ${logfile} | awk -F: '{print "scale=2 ; "$7+0" / 1000"}' | bc
 			else
 				echo "	${delegate} ${precision}: no results"
 			fi
@@ -26,3 +26,4 @@ for model in $(find . -name "*.tflite") ; do
 done
 
 rm -f /tmp/models-analyzed
+
