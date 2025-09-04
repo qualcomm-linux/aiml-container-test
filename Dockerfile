@@ -37,14 +37,18 @@ RUN git config --global user.name "Container Entity"
 
 # Fetch & patch tflite
 RUN cd ~/build ; \
-    git clone https://github.com/tensorflow/tensorflow.git --single-branch -b master
+    git clone https://github.com/tensorflow/tensorflow.git --single-branch -b r2.20
 COPY patches/0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch /root/build/tensorflow/
 COPY patches/0002-PATCH-tensorflow-c-library-enable-delegates.patch /root/build/tensorflow/
 RUN cd ~/build/tensorflow ; \
     git remote add robclark https://github.com/robclark/tensorflow.git ; \
     git fetch robclark rusticl-fixes ; \
-    git merge robclark/rusticl-fixes && git rebase origin/master ; \
+    git merge robclark/rusticl-fixes && git rebase origin/r2.20 ; \
     git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch 0002-PATCH-tensorflow-c-library-enable-delegates.patch
+
+RUN cd ~/build/tensorflow ; \
+    mkdir -p /usr/src ; \
+    git archive --format=tar.gz --output=/usr/src/tensorflow-lite-2.20.tar.gz --prefix=tensorflow-2.20/ HEAD -v
 
 # Grab bazel binaries and start the build.
 RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.1/bazel-7.4.1-linux-arm64
