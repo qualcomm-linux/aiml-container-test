@@ -257,3 +257,170 @@ COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
 RUN find /usr/local/lib
 COPY --from=fastrpc-build /lib/dsp /lib/dsp
 RUN find /lib/dsp
+
+#######################################################################
+
+# QIMSDK Development Image
+FROM build AS qimsdk-build
+
+# build time dependencies, needed for gst-plugins-qti-oss compilation:
+# gst-plugins-qti-oss is not an apt package, so we need to install its build dependencies manually
+#   instead of doing it using 'apt-get build-dep'
+#  gst-plugin-mlaconverter:       libeigen3-dev
+#  gst-plugin-mlaclassification:  libcairo-dev
+#  gst-plugin-mlmetaparser:       libjson-glib-dev
+#  gst-plugin-msgbroker:          libmosquitto-dev,
+#                                 librdkafka-dev
+#  gst-plugin-overlay:            opencl-headers
+#  gst-plugin-redissink:          libhiredis-dev
+#  gst-plugin-rtspbin:            libgstrtspserver-1.0-dev
+#  gst-plugin-restricted-zonedbg: libgstreamer-plugins-bad1.0-dev
+
+# Installing dependencies, needed in order for gst plugins to load succesfully runtime:
+#  gstreamer base plugins:        gobject-introspection,
+#                                 flex,
+#                                 bison,
+#                                 libglib2.0-0,
+#  glimagesink:                   gstreamer1.0-gl,
+#                                 gstreamer1.0-plugins-good,
+#                                 libgraphene-1.0-dev,
+#                                 libgl1,
+#                                 libegl1,
+#                                 libwayland-egl1,
+#                                 libwayland-dev
+#  opencl for tflite:             ocl-icd-libopencl1,
+#                                 mesa-opencl-icd,
+#                                 libopencl-clang-19-dev
+#  software encoder needed for
+#    rtspsrc usecases:            gstreamer1.0-plugins-ugly
+#  pulseaudio runtime dependency: pulseaudio
+
+# Installing required apt packages
+RUN apt-get update                                                                              && \
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y                               \
+        git tar unzip ssh rsync bash-completion jq cmake android-tools-adb wget pipx xz-utils curl \
+        gobject-introspection flex bison locales-all meson ninja-build gpg git-buildpackage        \
+        libeigen3-dev libcairo-dev libjson-glib-dev libmosquitto-dev opencl-headers libhiredis-dev \
+        libgstrtspserver-1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-gl libglib2.0-0      \
+        gstreamer1.0-plugins-good libgl1 libegl1 libwayland-egl1 pulseaudio ocl-icd-libopencl1     \
+        gstreamer1.0-plugins-ugly mesa-opencl-icd libopencl-clang-19-dev librdkafka-dev         && \
+        apt-get build-dep -y gst-plugins-base1.0 gst-plugins-good1.0                            && \
+        apt -y upgrade                                                                          && \
+        apt-get autoremove -y                                                                   && \
+        apt-get clean                                                                           && \
+        rm -rf /var/lib/apt/lists* /var/tmp/*
+
+# Set base directory
+ENV QIMSDK_BASE_DIR=/mnt/work
+ENV QIMSDK_TMP_DIR=${QIMSDK_BASE_DIR}/tmp
+RUN mkdir -p ${QIMSDK_TMP_DIR}
+
+# Add qimsdk install directory
+ENV QIMSDK_INSTALL_DIR=${QIMSDK_BASE_DIR}/deploy
+
+# Add qimsdk prebuilt directory
+ENV QIMSDK_PREBUILT_DIR=${QIMSDK_BASE_DIR}/prebuilt
+
+# Add qimsdk debug install directory
+ENV QIMSDK_INSTALL_DEBUG_DIR=${QIMSDK_BASE_DIR}/deploy_dbg
+
+# Add qimsdk build directory and logs directory
+ENV QIMSDK_BUILD_DIR=${QIMSDK_BASE_DIR}/build
+ENV QIMSDK_LOGS_DIR=${QIMSDK_BASE_DIR}/logs
+RUN mkdir -p ${QIMSDK_BUILD_DIR}
+RUN mkdir -p ${QIMSDK_LOGS_DIR}
+RUN mkdir -p ${QIMSDK_PREBUILT_DIR}
+
+# Set up download directory
+ENV QIMSDK_DOWNLOAD_DIR=${QIMSDK_BASE_DIR}/downloads
+RUN mkdir -p ${QIMSDK_DOWNLOAD_DIR}
+
+# Update and clean, fetch GStreamer base and good plugins
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && cd ${QIMSDK_DOWNLOAD_DIR}                  && \
+    apt source gst-plugins-base1.0 gst-plugins-good1.0 && apt-get autoremove -y                 && \
+    apt-get clean && rm -rf /var/lib/apt/lists* /var/tmp/*
+
+RUN git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+        init                                                                                    && \
+    git config --global --add safe.directory                                                       \
+        ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+        config --global user.name "username"                                                    && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+        config --global user.email "email"                                                      && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+        add --all                                                                               && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+        commit -m "Initial Plugins Base Commit"
+
+RUN git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+        init                                                                                    && \
+    git config --global --add safe.directory                                                       \
+        ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+        config --global user.name "username"                                                    && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+        config --global user.email "email"                                                      && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+        add --all                                                                               && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+        commit -m "Initial Plugins Good Commit"
+
+# Update linux-libc-dev to the latest version.
+# This update is needed to have the f16/f32 formats at include/drm-uapi/drm_fourcc.h header file for userspace development.
+# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/36081/diffs?commit_id=3931d5ad18a9a03a70b0a3581d502fb86bce2566
+# Remove onse the default stable linux-libc-dev vesion is >= 6.17.5 in the distribution.
+RUN wget https://ftp.debian.org/debian/pool/main/l/linux/linux-libc-dev_6.17.8-1_all.deb        && \
+    dpkg -i linux-libc-dev_6.17.8-1_all.deb && rm -rf linux-libc-dev_6.17.8-1_all.deb
+
+# Setup Tensorflow Lite 2.20
+ENV QIMSDK_TF_SRC_TAR=/usr/src/tensorflow-lite-2.20.tar.gz
+ENV QIMSDK_TF_SRC_DIR=/usr/src/tensorflow-2.20
+
+RUN tar -xvzf ${QIMSDK_TF_SRC_TAR} -C /usr/src/
+
+# Initialize environment variables
+ENV QIMSDK_SRC_DIR=${QIMSDK_BASE_DIR}/src
+ENV QIMSDK_PATH_TO_GST_META=${QIMSDK_SRC_DIR}/meta-qti-gst
+
+# meta-qti-gst: fetch
+RUN git clone --progress https://git.codelinaro.org/clo/le/meta-qti-gst.git                        \
+        --single-branch --branch imsdk.lnx.2.0.0 ${QIMSDK_SRC_DIR}/meta-qti-gst
+
+# gst-plugins-qti-oss: fetch
+RUN git clone --progress                                                                           \
+        https://git.codelinaro.org/clo/le/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git  \
+        --single-branch --branch imsdk.lnx.2.0.0 ${QIMSDK_SRC_DIR}/gst-plugins-qti-oss
+
+# Add development image scripts
+ENV QIMSDK_SCRIPTS=${QIMSDK_BASE_DIR}/scripts/
+COPY scripts ${QIMSDK_SCRIPTS}
+
+# Source container helper scripts from bashrc
+RUN echo "source ${QIMSDK_SCRIPTS}/env_setup.sh" >> /root/.bashrc
+
+# Change workdir back to base dir from downloads dir
+WORKDIR ${QIMSDK_BASE_DIR}
+
+# Copy the Tensorflow Lite's headers and dependent headers to the sysroot
+RUN bash /root/.bashrc qimsdk-copy-tf-lite-headers-to-sysroot
+
+# Sync prebuilt libs
+RUN bash /root/.bashrc qimsdk-propagate-prebuilt-libs
+
+# Call wrapper function to apply all patches
+RUN bash /root/.bashrc qimsdk-apply-patches
+
+# Call wrapper build function to compile and install gst plugins
+RUN bash /root/.bashrc qimsdk-incremental-build
+
+# Create directory to save deb packages
+RUN mkdir -p ${QIMSDK_DOWNLOAD_DIR}/debs/
+
+# Copy selected packages to install
+RUN cp ${QIMSDK_DOWNLOAD_DIR}/*base-1.0_* ${QIMSDK_DOWNLOAD_DIR}/*alsa_*                           \
+       ${QIMSDK_DOWNLOAD_DIR}/*gl_* ${QIMSDK_DOWNLOAD_DIR}/*gtk3_* ${QIMSDK_DOWNLOAD_DIR}/*base_*  \
+       ${QIMSDK_DOWNLOAD_DIR}/*base-apps_* ${QIMSDK_DOWNLOAD_DIR}/*good_*                          \
+       ${QIMSDK_DOWNLOAD_DIR}/*pulseaudio_* ${QIMSDK_DOWNLOAD_DIR}/*x_*                            \
+       ${QIMSDK_DOWNLOAD_DIR}/*gl1.0-0_* ${QIMSDK_DOWNLOAD_DIR}/*base1.0-0_1*                      \
+       ${QIMSDK_DOWNLOAD_DIR}/debs/

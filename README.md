@@ -108,10 +108,36 @@ INFO: Memory footprint delta from the start of the tool (MB): init=132.816 overa
 
 ### Table of Contents
 
+* [QIMSDK Docker Images](#Docker_images)
+    * [qimsdk-build](#qimsdk_build)
 * [Scripts](#Scripts)
     * [build.sh](#build.sh)
     * [env_setup.sh](#env_setup.sh)
     * [setup.sh](#setup.sh)
+
+<div id="Docker_images">
+
+### QIMSDK Docker Images
+
+<div id="qimsdk_build">
+
+#### qimsdk-build
+
+    1. Start from AIML Build Image
+    2. Install required open source packages to build image
+    3. Install required open source packages for deploy image to build image
+    4. Add deploy and prebuilt directories to install binaries to be propagated to deploy image
+    5. Add qimsdk build directory and logs directory
+    6. Set up download directory and download open-source projects which need to be patched
+    7. Alter apt sources list and istall dependency custom mesa libs to make our build work
+    8. Setup Tensorflow Lite 2.20
+    9. Fetch meta layers with patches needed
+    10. Fetch gst source code from codelinaro
+    11. Copy build and install scripts to build image
+    12. Source container helper scripts from bashrc
+    14. Copy tflite headers and libs using qimsdk-copy-tf-lite-headers-to-sysroot and qimsdk-propagate-prebuilt-libs
+    15. Apply patches to open-source projects which need to be patched
+    16. Call incremental build function which builds open-source and qti GStreamer plugins
 
 <div id="Scripts">
 
