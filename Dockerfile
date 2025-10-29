@@ -100,7 +100,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install git li
 RUN pip install --break-system-packages "qai-hub-models[yolox]"
 RUN pip install --break-system-packages "pyarrow==20.0.0"
 RUN python3 -m qai_hub_models.models.yolox.export --target-runtime tflite --precision float  
-RUN mkdir -p /root/models ; mv /build/yolox/ /root/models/
+RUN ls /build -la --color
+RUN mkdir -p /root/models ; mv /build/yolox_float/ /root/models/
 
 # Uninstall qai-hub-models, then reinstall it, yay python!
 RUN pip uninstall --break-system-package --no-input -y "qai-hub-models"
