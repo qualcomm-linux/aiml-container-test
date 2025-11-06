@@ -22,7 +22,7 @@ URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
 Suites: trixie-overlay
 Components: main
 Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
-Enabled: yes
+Enabled: no
 EOF
 
 # Update again
