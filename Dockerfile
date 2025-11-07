@@ -11,7 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
 
-# Pull mesa builds from Qartifactory repo
+# Pull modified packages builds from Qartifactory repo
 RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
 COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
 # QArtifactory qsc-deb-releases repository
@@ -25,11 +25,21 @@ Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
 Enabled: no
 EOF
 
+# Enable Backports repo, grab mesa from there
+COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
+Types: deb deb-src
+URIs: http://deb.debian.org/debian
+Suites: trixie-backports
+Components: main
+Enabled: yes
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+
 # Update again
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev cmake ninja-build
+RUN DEBIAN_FRONTEND=noninteractive apt -y install -t trixie-backports mesa-common-dev/trixie-backports libegl-dev libgles-dev cmake ninja-build
 
 
 RUN git config --global user.email "container@nohardware.com"
@@ -118,7 +128,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
 
-# Pull mesa builds from Qartifactory repo
+# Pull modified packages builds from Qartifactory repo
 RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
 COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
 # QArtifactory qsc-deb-releases repository
@@ -129,14 +139,24 @@ URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
 Suites: trixie-overlay
 Components: main
 Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
+Enabled: no
+EOF
+
+# Enable Backports repo, grab mesa from there
+COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
+Types: deb deb-src
+URIs: http://deb.debian.org/debian
+Suites: trixie-backports
+Components: main
 Enabled: yes
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install -t trixie-backports libgl1-mesa-dri/trixie-backports libgles2 mesa-opencl-icd/trixie-backports clpeak
 
 # Copy models from models container
 COPY --from=models /root/models /root/models
