@@ -35,11 +35,21 @@ Enabled: yes
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
 
+COPY <<EOF /etc/apt/preferences.d/debian-backports.pref
+# for binary packages built from these source packages, score the version from
+# Debian backports higher as to get hardware enabled or better hardware support
+
+Package: src:alsa-ucm-conf:any src:firmware-free:any src:firmware-nonfree:any src:linux:any src:linux-signed-arm64:any src:mesa:any
+Pin: release n=trixie-backports
+Pin-Priority: 900
+EOF
+
+
 # Update again
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install -t trixie-backports mesa-common-dev/trixie-backports libegl-dev libgles-dev cmake ninja-build
+RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev cmake ninja-build
 
 
 RUN git config --global user.email "container@nohardware.com"
@@ -152,11 +162,20 @@ Enabled: yes
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
 
+COPY <<EOF /etc/apt/preferences.d/debian-backports.pref
+# for binary packages built from these source packages, score the version from
+# Debian backports higher as to get hardware enabled or better hardware support
+
+Package: src:alsa-ucm-conf:any src:firmware-free:any src:firmware-nonfree:any src:linux:any src:linux-signed-arm64:any src:mesa:any
+Pin: release n=trixie-backports
+Pin-Priority: 900
+EOF
+
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install -t trixie-backports libgl1-mesa-dri/trixie-backports libgles2 mesa-opencl-icd/trixie-backports clpeak
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
 
 # Copy models from models container
 COPY --from=models /root/models /root/models
