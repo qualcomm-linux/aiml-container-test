@@ -103,3 +103,56 @@ INFO: Inference timings in us: Init: 1361236, First inference: 125113, Warmup (a
 INFO: Note: as the benchmark tool itself affects memory footprint, the following is only APPROXIMATE to the actual memory footprint of the model at runtime. Take the information at your discretion.
 INFO: Memory footprint delta from the start of the tool (MB): init=132.816 overall=132.816
 ```
+
+## About The QIMSDK-Debian Docker Image
+
+### Table of Contents
+
+* [Scripts](#Scripts)
+    * [build.sh](#build.sh)
+    * [env_setup.sh](#env_setup.sh)
+    * [setup.sh](#setup.sh)
+
+<div id="Scripts">
+
+### Scripts
+
+The functions inside these scripts are generally for building and maintaining the docker images.
+
+<div id="build.sh">
+
+#### build.sh
+
+Handles the compilation and installation of open-source and QTI GStreamer plugins.
+
+- qimsdk-cmake-configure - Configures a CMake project with security-hardened flags and custom build options
+- qimsdk-cmake-compile - Compiles a configured CMake target with logging
+- qimsdk-cmake-install - Installs CMake build artifacts to debug and deployment directories
+- qimsdk-debian-rules-build - Wrapper function that calls configure, compile and install for projects, which need to be built using debian/rules
+- qimsdk-cmake-build - Wrapper function that calls configure, compile and install for CMake projects
+- qimsdk-debian-rules-build-\<name-of-project\> - Builds specific open-source component with custom configuration
+- qimsdk-debian-rules-clean-\<name-of-project\> - Cleans build directory for specific open-source component
+- qimsdk-incremental-build-qti - Base QTI GStreamer plugins that the others depend on are built. After which, a hardcoded list of QTI GStreamer plugins is built in paralel. If one wishes to add a new GStreamer plugin to build using CMake, simply add the plugin directory name under gst-plugins-qti-oss/ source dir to the list.
+- qimsdk-incremental-build - Main entry point that builds all GStreamer components in sequence with success reporting. Also calls qimsdk-incremental-build-qti, to build QTI GStreamer plugins.
+- qimsdk-cmake-build-qcom-gstreamer1.0-plugins-oss \<dir-name-of-qti-gst-plugin-src\> - CMake build of a specified QTI gst plugin. Plugin directory name under gst-plugins-qti-oss/ must be provided as first argument.
+- qimsdk-cmake-clean-qcom-gstreamer1.0-plugins-oss \<dir-name-of-qti-gst-plugin-src\> - Clean a specified QTI gst plugin build dir. Plugin directory name under gst-plugins-qti-oss/ must be provided as first argument.
+
+<div id="env_setup.sh">
+
+#### env_setup.sh
+
+env_setup.sh is a script which sources all other scripts inside scripts dir inside build image environment.
+
+<div id="setup.sh">
+
+#### setup.sh
+
+Handles patching, library propagation, and dependency management for GStreamer plugins and TensorFlow Lite components.
+
+- qimsdk-apply-patch - A wrapper for git am command that applies patch files
+- qimsdk-apply-patches - Master wrapper that calls functions to apply patches to all required open-source projects
+- qimsdk-apply-patches-\<open-source-project\> - Applies patches specifically to targeted open source package
+- qimsdk-propagate-prebuilt-tflite-libs - Copies the prebuilt TensorFlow Lite C library (libtensorflowlite_c.so)
+- qimsdk-propagate-prebuilt-libs - Sets up the directory structure and calls functions for prebuilt libraries propagation. As of now, only tflite prebuilt libs are being propagated
+- qimsdk-copy-tf-lite-headers-to-sysroot - Copies all necessary headers to the sysroot while maintaining proper directory structure
+- qimsdk-reset-project-to-initial-commit - Resets a git repository back to its very first commit - This is done to setup the projects for patch application
