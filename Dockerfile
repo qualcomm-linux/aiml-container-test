@@ -100,6 +100,8 @@ RUN apt clean
 
 FROM debian:bookworm-slim AS models
 
+RUN mkdir /build
+
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
@@ -116,12 +118,14 @@ RUN pip install --break-system-packages qai-hub mmcv ultralytics
 #   Install the basic mesa dependencies to make the model export work
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install git libgl1 libglib2.0-0 libgl1-mesa-dri mesa-opencl-icd
 
-# Install Yolo-X"  model
-RUN pip install --break-system-packages "qai-hub-models[yolox]"
+# Install Yolov6"  model
+RUN pip install --break-system-packages "torch>=2.1,<2.9.0" "setuptools>=77.0.3"
+RUN pip install --break-system-packages "qai-hub-models[yolov6]"
 RUN pip install --break-system-packages "pyarrow==20.0.0"
-RUN python3 -m qai_hub_models.models.yolox.export --target-runtime tflite --precision float  
+RUN python3 -m qai_hub_models.models.yolov6.export --target-runtime tflite --precision float  
 RUN ls /build -la --color
-RUN mkdir -p /root/models ; mv /build/yolox_float/ /root/models/
+RUN mkdir -p /root/models
+#RUN mv /build/yolov6_float/ /root/models/
 
 # Uninstall qai-hub-models, then reinstall it, yay python!
 RUN pip uninstall --break-system-package --no-input -y "qai-hub-models"
