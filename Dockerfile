@@ -366,13 +366,6 @@ RUN git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                    
     git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
         commit -m "Initial Plugins Good Commit"
 
-# Update linux-libc-dev to the latest version.
-# This update is needed to have the f16/f32 formats at include/drm-uapi/drm_fourcc.h header file for userspace development.
-# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/36081/diffs?commit_id=3931d5ad18a9a03a70b0a3581d502fb86bce2566
-# Remove onse the default stable linux-libc-dev vesion is >= 6.17.5 in the distribution.
-RUN wget https://ftp.debian.org/debian/pool/main/l/linux/linux-libc-dev_6.17.8-1_all.deb        && \
-    dpkg -i linux-libc-dev_6.17.8-1_all.deb && rm -rf linux-libc-dev_6.17.8-1_all.deb
-
 # Setup Tensorflow Lite 2.20
 ENV QIMSDK_TF_SRC_TAR=/usr/src/tensorflow-lite-2.20.tar.gz
 ENV QIMSDK_TF_SRC_DIR=/usr/src/tensorflow-2.20
