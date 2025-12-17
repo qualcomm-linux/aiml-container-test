@@ -85,7 +85,8 @@ RUN cd ~/build/tensorflow ; \
     cp tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp bazel-bin/tensorflow/lite/examples/label_image/ ; \
     cd bazel-bin/tensorflow/lite/examples/label_image ; \
     wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    unzip mobilenet_v1_224_android_quant_2017_11_08.zip 
+    unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
+    rm ~/build/tensorflow/mobilenet_v1_224_android_quant_2017_11_08.zip
 
 RUN mv ~/build/tensorflow/bazel-bin/tensorflow ~
 
