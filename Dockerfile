@@ -182,6 +182,30 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install the basic mesa dependencies to make our build work
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
 
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool
+
+# Install fastrpc
+RUN mkdir ~/build
+RUN cd ~/build ; \
+	git clone https://github.com/qualcomm/fastrpc.git; cd fastrpc;./gitcompile;make install; rm ~/build/fastrpc -rf
+
+# Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
+RUN cd ~/build; \
+	 mkdir -p /lib/dsp/cdsp ; \
+	git clone https://github.com/linux-msm/hexagon-dsp-binaries.git; cp hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /lib/dsp/cdsp/ ; \
+	rm ~/build/hexagon-dsp-binaries -rf
+
+# Install QNN
+RUN cd ~/build ; \
+	wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
+	unzip v2.36.0.250627.zip ; \
+	rm ~/build/v2.36.0.250627.zip ; \
+	cp ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
+	cp ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /lib/dsp/cdsp/ ; \
+	rm /usr/local/lib/libSNPE* -rf ; \
+	rm /usr/local/lib/libSnpe* -rf ; \
+	rm ~/build/qairt -rf
+
 # Copy models from models container
 COPY --from=models /root/models /root/models
 
