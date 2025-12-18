@@ -85,9 +85,55 @@ RUN cd ~/build/tensorflow ; \
     cp tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp bazel-bin/tensorflow/lite/examples/label_image/ ; \
     cd bazel-bin/tensorflow/lite/examples/label_image ; \
     wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    unzip mobilenet_v1_224_android_quant_2017_11_08.zip 
+    unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
+    rm *.zip
 
 RUN mv ~/build/tensorflow/bazel-bin/tensorflow ~
+
+# Remove build folder
+RUN rm -rf ~/build
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
+
+FROM debian:trixie-slim AS fastrpc-build
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install build tools
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool wget unzip
+
+# Build & Install fastrpc
+RUN mkdir ~/build
+RUN cd ~/build ; \
+	git clone https://github.com/qualcomm/fastrpc.git ; \
+        cd fastrpc ; \
+        GITCOMPILE_NO_MAKE=yes ./gitcompile ; \
+        make -j$(nproc) ; \
+        make install DESTDIR=/opt/fastrpc ; \
+        rm ~/build/fastrpc -rf
+
+# Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
+RUN cd ~/build; \
+	mkdir -p /lib/dsp/cdsp ; \
+	git clone https://github.com/linux-msm/hexagon-dsp-binaries.git ; \
+	cp -v hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /lib/dsp/cdsp/ ; \
+	rm ~/build/hexagon-dsp-binaries -rf
+
+# Install QNN
+RUN cd ~/build ; \
+	wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
+	unzip v2.36.0.250627.zip ; \
+	rm ~/build/v2.36.0.250627.zip ; \
+	cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
+	cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /lib/dsp/cdsp/ ; \
+	rm /usr/local/lib/libSNPE* -rf ; \
+	rm /usr/local/lib/libSnpe* -rf ; \
+	rm ~/build/qairt -rf
 
 # Remove build folder
 RUN rm -rf ~/build
@@ -131,7 +177,6 @@ RUN mkdir -p /root/models
 RUN pip uninstall --break-system-package --no-input -y "qai-hub-models"
 RUN pip install --break-system-packages "qai-hub-models[hrnet_pose]"
 #RUN python3 -m qai_hub_models.models.hrnet_pose.export --target-runtime tflite --precision float  
-
 
 #######################################################################
 
@@ -200,3 +245,15 @@ RUN cd ~/tensorflow/lite/examples/label_image ; \
     ./label_image --image=grace_hopper.bmp
 
 ENTRYPOINT ["/bin/bash"]
+
+#######################################################################
+
+FROM deploy AS fastrpc-deploy
+
+# Copy fastrpc, host side libraries and DSP side libraries from the fastrpc-build layer
+COPY --from=fastrpc-build /opt/fastrpc/usr /usr/
+RUN find /usr/local/ | grep fastrpc
+COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
+RUN find /usr/local/lib
+COPY --from=fastrpc-build /lib/dsp /lib/dsp
+RUN find /lib/dsp
