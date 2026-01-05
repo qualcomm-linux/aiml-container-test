@@ -257,6 +257,7 @@ COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
 RUN find /usr/local/lib
 COPY --from=fastrpc-build /lib/dsp /lib/dsp
 RUN find /lib/dsp
+RUN ldconfig
 
 #######################################################################
 
