@@ -105,7 +105,7 @@ FROM debian:trixie-slim AS fastrpc-build
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install build tools
-RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool wget unzip
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool wget unzip libyaml-dev pkg-config
 
 # Build & Install fastrpc
 RUN mkdir ~/build
@@ -113,7 +113,7 @@ RUN cd ~/build ; \
 	git clone https://github.com/qualcomm/fastrpc.git ; \
         cd fastrpc ; \
         GITCOMPILE_NO_MAKE=yes ./gitcompile ; \
-        make -j$(nproc) ; \
+        make -j$(nproc) && \
         make install DESTDIR=/opt/fastrpc ; \
         rm ~/build/fastrpc -rf
 
@@ -249,6 +249,16 @@ ENTRYPOINT ["/bin/bash"]
 #######################################################################
 
 FROM deploy AS fastrpc-deploy
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install libyaml, fastrpc depends on it. Once we use proper debian packages, this workaround can go away
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libyaml-0-2
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
 
 # Copy fastrpc, host side libraries and DSP side libraries from the fastrpc-build layer
 COPY --from=fastrpc-build /opt/fastrpc/usr /usr/
