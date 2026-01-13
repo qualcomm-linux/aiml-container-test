@@ -340,31 +340,38 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && cd ${QIMSDK_DOWNLOAD_DIR}  
     apt source gst-plugins-base1.0 gst-plugins-good1.0 && apt-get autoremove -y                 && \
     apt-get clean && rm -rf /var/lib/apt/lists* /var/tmp/*
 
-RUN git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+# Automatically save gst source package version and set up gst source directories
+RUN GST_PLUGINS_BASE_VERSION=$(find ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base*                       \
+        -maxdepth 1 -type d | head -1 | sed 's/.*-//')                                          && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}                  \
         init                                                                                    && \
     git config --global --add safe.directory                                                       \
-        ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+        ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}                  && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}                  \
         config --global user.name "username"                                                    && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}                  \
         config --global user.email "email"                                                      && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}                  \
         add --all                                                                               && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2                                       \
-        commit -m "Initial Plugins Base Commit"
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}                  \
+        commit -m "Initial Plugins Base Commit"                                                 && \
+    echo "export GST_PLUGINS_BASE_VERSION=${GST_PLUGINS_BASE_VERSION}" >> /root/.bashrc
 
-RUN git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+RUN GST_PLUGINS_GOOD_VERSION=$(find ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good*                       \
+        -maxdepth 1 -type d | head -1 | sed 's/.*-//')                                          && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}                  \
         init                                                                                    && \
     git config --global --add safe.directory                                                       \
-        ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+        ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}                  && \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}                  \
         config --global user.name "username"                                                    && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}                  \
         config --global user.email "email"                                                      && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}                  \
         add --all                                                                               && \
-    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2                                       \
-        commit -m "Initial Plugins Good Commit"
+    git -C ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}                  \
+        commit -m "Initial Plugins Good Commit"                                                 && \
+    echo "export GST_PLUGINS_GOOD_VERSION=${GST_PLUGINS_GOOD_VERSION}" >> /root/.bashrc
 
 # Setup Tensorflow Lite 2.20
 ENV QIMSDK_TF_SRC_TAR=/usr/src/tensorflow-lite-2.20.tar.gz

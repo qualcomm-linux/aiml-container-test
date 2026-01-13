@@ -161,18 +161,18 @@ function qimsdk-cmake-build() {
 
 ###########################################################
 
-# debian/rules build gst-plugins-base-1.26.1
+# debian/rules build gst-plugins-base
 qimsdk-debian-rules-build-gst-plugins-base() {
     (
-        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2
+        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}
         qimsdk-debian-rules-build
     )
 }
 
-# debian/rules build gst-plugins-good-1.26.1
+# debian/rules build gst-plugins-good
 qimsdk-debian-rules-build-gst-plugins-good() {
     (
-        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2
+        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}
         qimsdk-debian-rules-build
     )
 }
@@ -180,7 +180,7 @@ qimsdk-debian-rules-build-gst-plugins-good() {
 # Clean gst-plugins-base
 function qimsdk-debian-rules-clean-gst-plugins-base() {
     (
-        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-1.26.2
+        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-base1.0-${GST_PLUGINS_BASE_VERSION}
         DEB_BUILD_OPTIONS=parallel=$(nproc) debian/rules clean
     )
 
@@ -190,7 +190,7 @@ function qimsdk-debian-rules-clean-gst-plugins-base() {
 # Clean gst-plugins-good
 function qimsdk-debian-rules-clean-gst-plugins-good() {
     (
-        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-1.26.2
+        cd ${QIMSDK_DOWNLOAD_DIR}/gst-plugins-good1.0-${GST_PLUGINS_GOOD_VERSION}
         DEB_BUILD_OPTIONS=parallel=$(nproc) debian/rules clean
     )
 
