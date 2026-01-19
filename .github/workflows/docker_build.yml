@@ -5,6 +5,7 @@ on:
 
 jobs:
   build:
+    if: github.repository_owner == 'qualcomm-linux'
     runs-on: [ self-hosted, qcom-u2404, arm64 ]
     steps:
     - name: Set up Docker Buildx
