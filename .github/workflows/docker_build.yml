@@ -19,8 +19,12 @@ jobs:
     
     - name: Build and push
       uses: docker/build-push-action@v6
+      env:
+        DOCKER_BUILD_RECORD_UPLOAD: false
       with:
         push: false
+        platforms: linux/arm64
+        provenance: mode=max
         tags: aiml-container-test:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
