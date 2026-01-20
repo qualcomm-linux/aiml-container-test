@@ -38,7 +38,7 @@ jobs:
         push: true
         platforms: linux/arm64
         provenance: mode=max
-        tags: aiml-container-test:latest
+        tags: ghcr.io/qualcomm-linux/aiml-container-test:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
