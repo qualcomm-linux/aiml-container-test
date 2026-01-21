@@ -103,3 +103,6 @@ INFO: Inference timings in us: Init: 1361236, First inference: 125113, Warmup (a
 INFO: Note: as the benchmark tool itself affects memory footprint, the following is only APPROXIMATE to the actual memory footprint of the model at runtime. Take the information at your discretion.
 INFO: Memory footprint delta from the start of the tool (MB): init=132.816 overall=132.816
 ```
+## License
+
+*Qualcomm CDI generator* is licensed under the [BSD-3-clause License](https://spdx.org/licenses/BSD-3-Clause.html). See [LICENSE](LICENSE) for the full license text.
