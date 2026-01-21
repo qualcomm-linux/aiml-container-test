@@ -1,4 +1,8 @@
 name: docker build
+
+env:
+ BUILD_REFERENCE: ${{ github.head_ref || github.ref_name }} 
+
 on:
   push:
     branches:
@@ -37,7 +41,7 @@ jobs:
         tags: aiml-container-test:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        outputs: type=oci,dest=${{ runner.temp }}/aiml-container.tar
+        outputs: type=oci,dest=${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
 
     - name: Build container and push to registry
       uses: docker/build-push-action@v6
@@ -47,7 +51,7 @@ jobs:
         push: true
         platforms: linux/arm64
         provenance: mode=max
-        tags: ghcr.io/qualcomm-linux/aiml-container-test:latest
+        tags: ghcr.io/qualcomm-linux/aiml-container-test:${{ env.BUILD_REFERENCE }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
