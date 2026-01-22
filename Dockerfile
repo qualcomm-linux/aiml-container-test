@@ -99,51 +99,6 @@ RUN apt clean
 
 #######################################################################
 
-FROM debian:trixie-slim AS fastrpc-build
-
-# Update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-
-# Install build tools
-RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool wget unzip libyaml-dev pkg-config
-
-# Build & Install fastrpc
-RUN mkdir ~/build
-RUN cd ~/build ; \
-	git clone https://github.com/qualcomm/fastrpc.git ; \
-        cd fastrpc ; \
-        GITCOMPILE_NO_MAKE=yes ./gitcompile ; \
-        make -j$(nproc) && \
-        make install DESTDIR=/opt/fastrpc ; \
-        rm ~/build/fastrpc -rf
-
-# Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
-RUN cd ~/build; \
-	mkdir -p /lib/dsp/cdsp ; \
-	git clone https://github.com/linux-msm/hexagon-dsp-binaries.git ; \
-	cp -v hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /lib/dsp/cdsp/ ; \
-	rm ~/build/hexagon-dsp-binaries -rf
-
-# Install QNN
-RUN cd ~/build ; \
-	wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
-	unzip v2.36.0.250627.zip ; \
-	rm ~/build/v2.36.0.250627.zip ; \
-	cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-	cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /lib/dsp/cdsp/ ; \
-	rm /usr/local/lib/libSNPE* -rf ; \
-	rm /usr/local/lib/libSnpe* -rf ; \
-	rm ~/build/qairt -rf
-
-# Remove build folder
-RUN rm -rf ~/build
-
-# Remove cached files
-RUN rm ~/.cache -rf
-RUN apt clean
-
-#######################################################################
-
 FROM debian:bookworm-slim AS models
 
 RUN mkdir /build
@@ -250,22 +205,32 @@ ENTRYPOINT ["/bin/bash"]
 
 FROM deploy AS fastrpc-deploy
 
+# Add repo containing fastrpc, dsp binaries and tflite
+COPY <<EOF /etc/apt/sources.list.d/debusine.sources
+Types: deb deb-src
+URIs: https://deb.debusine.debian.net/debian/r-rbasak-qcom-hexagon-stack-2
+Suites: sid
+Components: main non-free-firmware
+Signed-By:
+ -----BEGIN PGP PUBLIC KEY BLOCK-----
+ .
+ mDMEaWpOVhYJKwYBBAHaRw8BAQdA6gdtyg0BKTS9EA9CAbbY3gk7bOYKY74Clfak
+ 3FjWn220PEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIGRlYmlhbi9yLXJiYXNhay1x
+ Y29tLWhleGFnb24tc3RhY2stMoiQBBMWCgA4FiEEWi95OlWxjLyNwWscPETQboDo
+ XeEFAmlqTlYCGwMFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AACgkQPETQboDoXeFL
+ AQD+Pm5ERzQPJRdxcqekaUVbqKrbyo1i7NPztV0j0YnyDFUA/24Ms1ZS8eV1um+R
+ pqm6Uf5gvyZjJrjMGZWx/hqvriED
+ =P90u
+ -----END PGP PUBLIC KEY BLOCK-----
+EOF
+
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install libyaml, fastrpc depends on it. Once we use proper debian packages, this workaround can go away
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libyaml-0-2
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
-
-# Copy fastrpc, host side libraries and DSP side libraries from the fastrpc-build layer
-COPY --from=fastrpc-build /opt/fastrpc/usr /usr/
-RUN find /usr/local/ | grep fastrpc
-COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
-RUN find /usr/local/lib
-COPY --from=fastrpc-build /lib/dsp /lib/dsp
-RUN find /lib/dsp
-RUN ldconfig
 
