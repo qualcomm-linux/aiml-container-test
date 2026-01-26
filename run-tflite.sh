@@ -1,6 +1,9 @@
 #!/bin/bash
 
+# Workaround binaries expecting .so instead of proper SOVERSIONed name
 ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/aarch64-linux-gnu/libOpenCL.so 
+ln -sf /usr/lib/aarch64-linux-gnu/libcdsprpc.so.1.0.0 /usr/lib/aarch64-linux-gnu/libcdsprpc.so
+
 cd ~/tensorflow/lite/examples/label_image
 
 set -x
