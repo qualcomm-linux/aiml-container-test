@@ -98,6 +98,42 @@ RUN rm ~/.cache -rf
 RUN apt clean
 
 #######################################################################
+ 
+FROM debian:trixie-slim AS fastrpc-build
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install build tools
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
+
+# Install QNN
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib
+RUN cd ~/build ; \
+       wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
+       unzip v2.36.0.250627.zip ; \
+       rm ~/build/v2.36.0.250627.zip ; \
+       cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
+       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp/ ; \
+       rm /usr/local/lib/libSNPE* -rf ; \
+       rm /usr/local/lib/libSnpe* -rf ; \
+       rm ~/build/qairt -rf
+
+# Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
+RUN cd ~/build; \
+       mkdir -p /usr/lib/dsp/cdsp ; \
+       git clone https://github.com/linux-msm/hexagon-dsp-binaries.git ; \
+       cp -v hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /usr/lib/dsp/cdsp/ ; \
+       rm ~/build/hexagon-dsp-binaries -rf
+
+# Remove build folder
+RUN rm -rf ~/build
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
 
 FROM debian:bookworm-slim AS models
 
@@ -229,6 +265,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install libyaml, fastrpc depends on it. Once we use proper debian packages, this workaround can go away
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
+
+# Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
+COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
+RUN find /usr/local/lib
+
+# Copy over DSP libraries
+COPY --from=fastrpc-build /usr/lib/dsp /usr/lib/dsp
+RUN find /usr/lib/dsp
 
 # Remove cached files
 RUN rm ~/.cache -rf
