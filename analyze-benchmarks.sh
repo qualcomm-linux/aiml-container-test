@@ -1,4 +1,5 @@
 #!/bin/bash
+# Copyright (c) 2026 Qualcomm Technologies, Inc. All rights reserved.
 
 rm -f /tmp/models-analyzed
 touch /tmp/models-analyzed

@@ -1,4 +1,5 @@
 #!/bin/bash
+# Copyright (c) 2026 Qualcomm Technologies, Inc. All rights reserved.
 
 # Add symlink for libOpenCL, tflite hardcodes the .so, it doesn't properly dynamically link to .so.X
 ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/aarch64-linux-gnu/libOpenCL.so

@@ -1,4 +1,5 @@
 #!/bin/bash
+# Copyright (c) 2026 Qualcomm Technologies, Inc. All rights reserved.
 
 # Workaround binaries expecting .so instead of proper SOVERSIONed name
 ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/aarch64-linux-gnu/libOpenCL.so 
