@@ -1,4 +1,4 @@
-name: docker build
+name: Build OCI container images
 
 env:
  BUILD_REFERENCE: ${{ github.head_ref || github.ref_name }} 
@@ -11,6 +11,7 @@ on:
 
 jobs:
   build:
+    name: Build and upload container image(s)
     if: github.repository_owner == 'qualcomm-linux'
     runs-on: [ self-hosted, qcom-u2404, arm64 ]
     permissions:
