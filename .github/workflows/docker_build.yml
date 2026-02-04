@@ -7,12 +7,19 @@ on:
   push:
     branches:
       - main
+  workflow_call:
+    outputs:
+      artifacts_url:
+        description: "URL to retrieve build artifacts"
+        value: ${{ jobs.build-debos.outputs.url }}    
   workflow_dispatch:
 
 jobs:
   build:
     name: Build and upload container image(s)
     if: github.repository_owner == 'qualcomm-linux'
+    outputs:
+      url: ${{ steps.upload_artifacts_gcp.outputs.url }}
     runs-on: [ self-hosted, qcom-u2404, arm64 ]
     permissions:
       packages: write
@@ -44,6 +51,14 @@ jobs:
         cache-to: type=gha,mode=max
         outputs: type=oci,dest=${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
 
+    - name: Stage OCI artifacts for publishing
+      run: |
+        set -ux
+        # create a directory for the current run
+        dir="OCI-artifacts"
+        mkdir -v "${dir}"
+        cp -v ${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar "${dir}"
+
     - name: Build container and push to registry
       uses: docker/build-push-action@v6
       env:
@@ -56,3 +71,9 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    # upload to a cloud storage space accessible by LAVA and developers
+    - name: Upload private artifacts (GCP)
+      uses: qualcomm-linux/upload-private-artifact-action@v1
+      id: upload_artifacts_gcp
+      with:
+        path: OCI-artifacts
