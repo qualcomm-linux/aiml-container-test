@@ -4,9 +4,6 @@ env:
  BUILD_REFERENCE: ${{ github.head_ref || github.ref_name }} 
 
 on:
-  push:
-    branches:
-      - main
   workflow_call:
     outputs:
       artifacts_url:
@@ -21,9 +18,6 @@ jobs:
     outputs:
       url: ${{ steps.upload_artifacts_gcp.outputs.url }}
     runs-on: [ self-hosted, qcom-u2404, arm64 ]
-    permissions:
-      packages: write
-      contents: read
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6

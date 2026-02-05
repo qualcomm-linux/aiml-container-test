@@ -1,0 +1,16 @@
+name: Build on push to branch
+
+on:
+  push:
+    branches: [main, ci-staging]
+
+# implicitely set all other permissions to none
+permissions:
+  checks: write # lava-test.yml
+  contents: read # docker_build.yml lava-schema-check.yml lava-test.yml
+  packages: read # lava-test.yml
+  pull-requests: write # lava-test.yml
+
+jobs:
+  build-daily:
+    uses: ./.github/workflows/docker_build.yml

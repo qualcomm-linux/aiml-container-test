@@ -1,0 +1,22 @@
+name: Daily Build
+
+on:
+  # run daily at 8:30am
+  schedule:
+    - cron: '30 8 * * *'
+  # allow manual runs
+  workflow_dispatch:
+
+# implicitely set all other permissions to none
+permissions:
+  checks: write # lava-test.yml
+  contents: read # docker_build.yml lava-test.yml
+  packages: read # lava-test.yml
+  pull-requests: write # lava-test.yml
+
+jobs:
+  build-daily:
+    # don't run cron from forks of the main repository or from other branches
+    if: github.repository == 'qualcomm-linux/aiml-container-test' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/docker_build.yml
+
