@@ -108,13 +108,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
 # Install QNN
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib
+RUN mkdir -p ~/build
 RUN cd ~/build ; \
        wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
        unzip v2.36.0.250627.zip ; \
-       rm ~/build/v2.36.0.250627.zip ; \
-       cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp/ ; \
+       rm ~/build/v2.36.0.250627.zip
+RUN mkdir -p /usr/lib/dsp/cdsp /usr/local/lib
+RUN cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
+       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp ; \
        rm /usr/local/lib/libSNPE* -rf ; \
        rm /usr/local/lib/libSnpe* -rf ; \
        rm ~/build/qairt -rf
