@@ -20,3 +20,12 @@ jobs:
     if: github.repository == 'qualcomm-linux/aiml-container-test' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/docker_build.yml
 
+  test-daily:
+    # don't run cron from forks of the main repository or from other branches
+    if: github.repository == 'qualcomm-linux/qcom-deb-images' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/lava-test.yml
+    needs: build-daily
+    secrets: inherit
+    with:
+      url: https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/qcom-deb-images/21832187961-1/
+
