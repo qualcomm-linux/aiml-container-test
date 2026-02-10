@@ -14,3 +14,11 @@ permissions:
 jobs:
   build-daily:
     uses: ./.github/workflows/docker_build.yml
+  schema-check:
+    uses: ./.github/workflows/lava-schema-check.yml
+  test:
+    uses: ./.github/workflows/lava-test.yml
+    needs: [build-daily, schema-check]
+    secrets: inherit
+    with:
+      url: https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/qcom-deb-images/21832187961-1/
