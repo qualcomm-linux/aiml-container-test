@@ -113,9 +113,10 @@ RUN cd ~/build ; \
        wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
        unzip v2.36.0.250627.zip ; \
        rm ~/build/v2.36.0.250627.zip
-RUN mkdir -p /usr/lib/dsp/cdsp /usr/local/lib
+RUN mkdir -p /usr/lib/dsp/cdsp /usr/local/lib /usr/share/hexagon-dsp/qcm6490/Thundercomm/RB3gen2/dsp
 RUN cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp ; \
+       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/share/hexagon-dsp/qcm6490/Thundercomm/RB3gen2/dsp/cdsp ; \
+       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v75/unsigned/* /usr/share/hexagon-dsp/qcs8300/Qualcomm/QCS8300-RIDE/dsp/cdsp ; \
        rm /usr/local/lib/libSNPE* -rf ; \
        rm /usr/local/lib/libSnpe* -rf ; \
        rm ~/build/qairt -rf
@@ -124,7 +125,7 @@ RUN cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/
 RUN cd ~/build; \
        mkdir -p /usr/lib/dsp/cdsp ; \
        git clone https://github.com/linux-msm/hexagon-dsp-binaries.git ; \
-       cp -v hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /usr/lib/dsp/cdsp/ ; \
+       cp -v hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /usr/share/hexagon-dsp/qcm6490/Thundercomm/RB3gen2/dsp/cdsp/ ; \
        rm ~/build/hexagon-dsp-binaries -rf
 
 # Remove build folder
