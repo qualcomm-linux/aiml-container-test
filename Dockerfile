@@ -8,19 +8,18 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
-# Install QAIRT host libraries and DSP skeletons for every supported Hexagon architecture
-ARG QAIRT_VERSION=2.47.0.260601
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib /usr/share/aiml-container
+# Install QNN
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/share/qcom /usr/local/lib -p
 RUN cd ~/build ; \
-       wget "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip"; \
-       unzip "v${QAIRT_VERSION}.zip" ; \
-       rm ~/build/v${QAIRT_VERSION}.zip ; \
-       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
-       printf '%s\n' "${QAIRT_VERSION}" >/usr/share/aiml-container/qairt-version ; \
-       rm /usr/local/lib/libSNPE* -rf ; \
-       rm /usr/local/lib/libSnpe* -rf ; \
-       rm ~/build/qairt -rf
+	export QNNVERSION="2.43.0.260128" ; \
+	wget https://apigwx-aws.qualcomm.com/qsc/public/v1/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QNNVERSION}/v${QNNVERSION}.zip; \
+	unzip v${QNNVERSION}.zip ; \
+	rm ~/build/v${QNNVERSION}.zip ; \
+	rm ~/build/qairt/${QNNVERSION}/lib/aarch64-oe-linux-gcc11.2/libSNPE*; \
+	rm ~/build/qairt/${QNNVERSION}/lib/aarch64-oe-linux-gcc11.2/libSnpe*; \
+	cp ~/build/qairt/${QNNVERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ; \
+	cp ~/build/qairt/*/lib/hexagon-v* /usr/share/qcom/ -rf; \
+	rm ~/build/qairt -rf
 
 # Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
 RUN cd ~/build; \
