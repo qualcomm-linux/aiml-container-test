@@ -226,6 +226,8 @@ COPY run-tflite.sh /
 COPY benchmark-tflite.sh /
 COPY install-gstreamer.sh /
 RUN chmod +x /*.sh
+RUN mkdir /usr/share/qcom/conf.d -p
+COPY fastrpc_config.yaml /usr/share/qcom/conf.d/
 
 # Remove cached files
 RUN rm ~/.cache -rf
