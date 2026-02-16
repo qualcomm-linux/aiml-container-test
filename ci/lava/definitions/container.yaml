@@ -1,0 +1,29 @@
+metadata:
+    name: container-tests-AI
+    format: "Lava-Test Test Definition 1.0"
+    description: "Tests for AI/ML workloads inside containers."
+    version: "0.1"
+    maintainer:
+        - koen.kooi@oss.qualcomm.com
+    os:
+        - debian
+        - openembedded
+    scope:
+        - functional
+    environment:
+        - lava-test-shell        
+    devices:
+        - qrb2210-rb1
+        - qcs6490-rb3gen2-vision-kit
+
+params:
+    OCITARBALL: "container.tar"
+    IMAGETAG: "aiml-container-test:latest"
+    TESTS: "import-oci, run-oci, label_images, benchmark_model"
+
+run:
+    steps:
+        - find . -name "*.tar"
+        - cd ./ci/lava/definitions/
+        - ./container.sh -i "${IMAGETAG}" -o "${OCITARBALL}" -t "${TESTS}"
+        - ../utils/send-to-lava.sh ./output/result.txt

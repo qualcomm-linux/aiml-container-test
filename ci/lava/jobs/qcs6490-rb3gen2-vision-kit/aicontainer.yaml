@@ -4,6 +4,15 @@ actions:
       image:
         headers:
           Authorization: Q_S3_TOKEN
+        url: "{{CONTAINER_URL}}"
+    timeout:
+      minutes: 200
+    to: downloads
+- deploy:
+    images:
+      image:
+        headers:
+          Authentication: Q_GITHUB_TOKEN
         url: "{{BUILD_DOWNLOAD_URL}}/flash-ufs.tar.gz"
     postprocess:
       docker:
@@ -11,6 +20,12 @@ actions:
         steps:
         - export IMAGE_PATH=$PWD
         - cp overlay*.tar.gz overlay.tar.gz
+        - mkdir -p $IMAGE_PATH/overlay
+        - tar --numeric-owner -xvf overlay.tar.gz -C $IMAGE_PATH/overlay
+        - cp --reflink=auto aiml-container*tar ./container.tar
+        - mv container.tar $IMAGE_PATH/overlay/lava-*/*/tests/*_container-test/ci/lava/definitions/
+        - ( cd $IMAGE_PATH/overlay && tar --numeric-owner -zcvf $IMAGE_PATH/overlay.tar.gz . )
+        - rm -rf $IMAGE_PATH/overlay
         - echo "OVERLAY=overlay.tar.gz" >> $IMAGE_PATH/flash.settings
         - echo "OVERLAY_PATH=/home/" >> $IMAGE_PATH/flash.settings
         - echo "ROOTFS_IMAGE=disk-ufs.img2" >> $IMAGE_PATH/flash.settings
@@ -50,23 +65,19 @@ actions:
     - "Retype new password"
     timeout:
       minutes: 3
+- command:
+    name: network_turn_on
 - test:
     definitions:
     - from: git
-      name: "smoke-test"
-      path: automated/linux/smoke/smoke.yaml
-      repository: https://github.com/linaro/test-definitions.git
+      name: "container-test"
+      repository: https://github.com/qualcomm-linux/aiml-container-test
+      branch: ci-staging
+      path: ci/lava/definitions/container.yaml
       parameters:
-        SKIP_INSTALL: "True"
-        TESTS: "pwd, uname -a, ip a"
-    - from: git
-      name: "wlan-smoke-test"
-      path: automated/linux/wlan-smoke/wlan-smoke.yaml
-      repository: https://github.com/linaro/test-definitions.git
-      parameters:
-        SKIP_INSTALL: "True"
-- command:
-    name: network_turn_on
+        OCITARBALL: "container.tar"
+        IMAGETAG: "aiml-container-test:latest"
+        TESTS: "import-oci, run-oci, label_images, benchmark_model"
 context:
   lava_test_results_dir: /home/lava-%s
   test_character_delay: 10

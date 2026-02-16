@@ -24,7 +24,7 @@ jobs:
           CONTAINER_URL="https://example.com/downloads/oci.tar"
           GITHUB_SHA="7e6f96ccf3e911a8a1a18accdbb91991aa0db66e"
 
-          find ci/lava/q* -name "*.yaml" -exec sed \
+          find ci/lava/jobs -name "*.yaml" -exec sed \
               -e "s|{{BUILD_DOWNLOAD_URL}}|${BUILD_DOWNLOAD_URL}|g" \
               -e "s|{{CONTAINER_URL}}|${CONTAINER_URL}|g" \
               -e "s|{{BUILD_FILE_NAME}}|${BUILD_FILE_NAME}|g" \
@@ -35,4 +35,4 @@ jobs:
               -e "s|{{GITHUB_SHA}}|${GITHUB_SHA}|g" \
               -i '{}' \;
 
-          ci/schemacheck.py ci/lava/
+          ci/schemacheck.py ci/lava/jobs
