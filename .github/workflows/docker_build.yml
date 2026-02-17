@@ -65,9 +65,49 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    # upload to a cloud storage space accessible by LAVA and developers
+    # Syft is not packaged in Debian; it's available as a binary tarball or
+    # as container image from upstream; it's available on arm64 and x86
+    - name: Install Syft
+      run: |
+        set -ux
+        sudo apt -y install curl
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh
+
+    - name: Generate SBOMs with Syft
+      run: |
+        set -ux
+        bin/syft --version
+        SYFT_FORMAT_PRETTY=true bin/syft \
+            -o cyclonedx-json=container-sbom.cyclonedx.json \
+            -o spdx-json=container-sbom.spdx.json \
+            -o syft-json=container-sbom.syft.json \
+            -o syft-text=container-sbom.syft.txt \
+            -o syft-table \
+            --parallelism `nproc` \
+            --select-catalogers "+dpkg-db-cataloger,+python-package-cataloger" \
+            --source-name aiml-container \
+            --source-version "${{ env.BUILD_REFERENCE }}" \
+            -v \
+            OCI-artifacts/aiml-container-${{ env.BUILD_REFERENCE }}.tar
+
+    - name: Stage SBOMs for publishing
+      run: |
+        set -ux
+        gzip container-sbom.*
+        dir="sboms"
+        mkdir -v sboms
+        cp -av container-sbom.*.gz sboms
+
+    - name: Upload SBOMs as private artifacts
+      uses: qualcomm-linux/upload-private-artifact-action@v1
+      id: upload_sbom_artifacts
+      with:
+        path: sboms
+
+    # upload OCI tarnall to a cloud storage space accessible by LAVA and developers
     - name: Upload private artifacts (GCP)
       uses: qualcomm-linux/upload-private-artifact-action@v1
       id: upload_artifacts_gcp
       with:
         path: OCI-artifacts
+
