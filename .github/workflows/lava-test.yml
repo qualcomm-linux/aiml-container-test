@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       url:
-        required: false
+        required: true
         type: string
 
 # implicitely set all other permissions to none
@@ -16,6 +16,7 @@ permissions:
 
 env:
   BUILD_URL: "https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/qcom-deb-images/21832187961-1/"
+  CONTAINER_URL: ${{ inputs.url }}
   LAVA_CI: ci/lava/
 
 jobs:
@@ -32,6 +33,7 @@ jobs:
         run: |
           echo "Triggered by ${{ github.event_name }}"
           echo "Build URL: $BUILD_URL"
+          echo "Container URL: $CONTAINER_URL"
       - name: "List jobs"
         id: listjobs
         run: |
@@ -72,7 +74,7 @@ jobs:
 
       - name: Update test definition ${{ matrix.target }}
         run: |
-          # e.g. qrb2210-rb1/boot.yaml
+          # e.g. qrb2210-rb1/container.yaml
           TARGET="${{ matrix.target }}"
           TEMPLATE="${LAVA_CI}${TARGET}"
           # left-side – e.g. qrb2210-rb1
@@ -81,6 +83,7 @@ jobs:
           BUILD_FILE_NAME="unused"
           sed \
               -e "s|{{BUILD_DOWNLOAD_URL}}|${BUILD_DOWNLOAD_URL}|g" \
+              -e "s|{{CONTAINER_URL}}|${CONTAINER_URL}|g" \
               -e "s|{{BUILD_FILE_NAME}}|${BUILD_FILE_NAME}|g" \
               -e "s|{{DEVICE_TYPE}}|${DEVICE_TYPE}|g" \
               -e "s|{{GITHUB_REPOSITORY}}|${GITHUB_REPOSITORY}|g" \
