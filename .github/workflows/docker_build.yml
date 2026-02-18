@@ -8,21 +8,32 @@ on:
     outputs:
       artifacts_url:
         description: "URL to retrieve build artifacts"
-        value: ${{ jobs.build-debos.outputs.url }}    
+        value: ${{ jobs.build-oci.outputs.url }}
   workflow_dispatch:
 
 jobs:
-  build:
+  build-oci:
     name: Build and upload container image(s)
     if: github.repository_owner == 'qualcomm-linux'
     outputs:
-      url: ${{ steps.upload_artifacts_s3.outputs.url }}
+      url: ${{ steps.upload_artifacts_s3.outputs.url }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
     runs-on: [ self-hosted, qcom-u2404, arm64 ]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
       with:
         persist-credentials: false
+
+    - name: Set up Docker
+      uses: docker/setup-docker-action@v4
+      with:
+        daemon-config: |
+          {
+            "debug": true,
+            "features": {
+              "containerd-snapshotter": true
+            }
+          }
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -41,11 +52,11 @@ jobs:
       with:
         push: false
         platforms: linux/arm64
-        provenance: mode=max
-        tags: aiml-container-test:latest
+        tags: aiml-container-test:${{ env.BUILD_REFERENCE }}
+        target: fastrpc-deploy
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        outputs: type=oci,dest=${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
+        outputs: type=docker,dest=${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
 
     - name: Stage OCI artifacts for publishing
       run: |
@@ -62,8 +73,8 @@ jobs:
       with:
         push: false
         platforms: linux/arm64
-        provenance: mode=max
         tags: ghcr.io/qualcomm-linux/aiml-container-test:${{ env.BUILD_REFERENCE }}
+        target: fastrpc-deploy
         cache-from: type=gha
         cache-to: type=gha,mode=max
 

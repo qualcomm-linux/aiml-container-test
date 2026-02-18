@@ -22,10 +22,12 @@ jobs:
           DEVICE_TYPE="my-device"
           BUILD_FILE_NAME="build.tar.gz"
           BUILD_DOWNLOAD_URL="https://example.com/downloads/1"
+          CONTAINER_URL="https://example.com/downloads/oci.tar"
           GITHUB_SHA="7e6f96ccf3e911a8a1a18accdbb91991aa0db66e"
 
-          find ci/lava/ -name "*.yaml" -exec sed \
+          find ci/lava/q* -name "*.yaml" -exec sed \
               -e "s|{{BUILD_DOWNLOAD_URL}}|${BUILD_DOWNLOAD_URL}|g" \
+              -e "s|{{CONTAINER_URL}}|${CONTAINER_URL}|g" \
               -e "s|{{BUILD_FILE_NAME}}|${BUILD_FILE_NAME}|g" \
               -e "s|{{DEVICE_TYPE}}|${DEVICE_TYPE}|g" \
               -e "s|{{GITHUB_REPOSITORY}}|${GITHUB_REPOSITORY}|g" \
