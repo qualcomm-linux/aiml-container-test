@@ -14,12 +14,20 @@ actions:
         headers:
           Authentication: Q_GITHUB_TOKEN
         url: "{{BUILD_DOWNLOAD_URL}}/flash-ufs.tar.gz"
+      firmware:
+        url: https://releases.linaro.org/96boards/dragonboard845c/qualcomm/firmware/RB3_firmware_20221121000000-v5.zip
     postprocess:
       docker:
         image: ghcr.io/foundriesio/lava-lmp-sign:main
         steps:
         - export IMAGE_PATH=$PWD
+        - unzip RB3_firmware_20221121000000-v5.zip
+        - cp 17-USB3-201-202-FW/K2026090.mem renesas_usb_fw.mem
         - cp overlay*.tar.gz overlay.tar.gz
+        - tar xvf flash-ufs.tar.gz
+        - virt-copy-in -a disk-ufs.img2 renesas_usb_fw.mem /lib/firmware/
+        - rm flash-ufs.tar.gz
+        - tar czvf flash-ufs.tar.gz disk-ufs*.img* flash_*
         - mkdir -p $IMAGE_PATH/overlay
         - tar --numeric-owner -xvf overlay.tar.gz -C $IMAGE_PATH/overlay
         - cp --reflink=auto aiml-container*tar ./container.tar
