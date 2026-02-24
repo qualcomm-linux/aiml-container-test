@@ -18,7 +18,7 @@ actions:
         url: https://releases.linaro.org/96boards/dragonboard845c/qualcomm/firmware/RB3_firmware_20221121000000-v5.zip
     postprocess:
       docker:
-        image: ghcr.io/foundriesio/lava-lmp-sign:main
+        image: nuc-worker-06.fiolab.qualcomm.com/kir
         steps:
         - export IMAGE_PATH=$PWD
         - unzip RB3_firmware_20221121000000-v5.zip
