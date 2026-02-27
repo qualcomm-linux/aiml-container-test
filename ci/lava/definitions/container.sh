@@ -47,8 +47,10 @@ install_docker() {
     dist_name
     # shellcheck disable=SC2154
     case "${dist}" in
-        debian|ubuntu|fedora|centos)
+        debian|ubuntu)
             echo "Installed version not recent enough, Installing docker devops style, curl straight to shell"
+            export DEBIAN_FRONTEND=noninteractive
+	    apt -y purge docker.io || true
             install_deps curl
             curl -fsSL get.docker.com -o get-docker.sh
             sh get-docker.sh
