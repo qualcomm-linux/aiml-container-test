@@ -48,6 +48,8 @@ actions:
     to: flasher
 - command:
     name: network_turn_on
+- command:
+    name: usb_device_off
 - boot:
     auto_login:
       login_prompt: 'login:'
@@ -71,6 +73,8 @@ actions:
 - command:
     name: usb_c_off
 - test:
+    timeout:
+      minutes: 5
     definitions:
     - from: git
       name: "container-test"
