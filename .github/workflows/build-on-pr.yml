@@ -11,15 +11,5 @@ permissions:
   pull-requests: write # lava-test.yml
 
 jobs:
-  event-file:
-    name: "Upload event file"
-    runs-on: ubuntu-latest
-    steps:
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: Event File
-        path: ${{ github.event_path }}
-
   build-pr:
     uses: ./.github/workflows/docker_build.yml
