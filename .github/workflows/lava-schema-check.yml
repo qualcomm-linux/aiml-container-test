@@ -13,8 +13,9 @@ jobs:
     container: lavasoftware/lava-server:2025.04
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Schema check
         run: |
