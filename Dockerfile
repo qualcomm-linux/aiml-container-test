@@ -1,91 +1,3 @@
-FROM debian:trixie-slim AS build
-
-RUN mkdir ~/build
-
-# Add deb-src for everything
-RUN sed -Ei 's/^Types: deb$/Types: deb deb-src/'  /etc/apt/sources.list.d/debian.sources
-
-# Update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-
-# Install build tools
-RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
-
-# Enable Backports repo, grab mesa from there
-COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
-Types: deb deb-src
-URIs: http://deb.debian.org/debian
-Suites: trixie-backports
-Components: main
-Enabled: yes
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-EOF
-
-COPY <<EOF /etc/apt/preferences.d/debian-backports.pref
-# for binary packages built from these source packages, score the version from
-# Debian backports higher as to get hardware enabled or better hardware support
-
-Package: src:alsa-ucm-conf:any src:firmware-free:any src:firmware-nonfree:any src:linux:any src:linux-signed-arm64:any src:mesa:any
-Pin: release n=trixie-backports
-Pin-Priority: 900
-EOF
-
-
-# Update again
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-
-# Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev cmake ninja-build
-
-
-RUN git config --global user.email "container@nohardware.com"
-RUN git config --global user.name "Container Entity"
-
-# Fetch & patch tflite
-RUN cd ~/build ; \
-    git clone https://github.com/tensorflow/tensorflow.git --single-branch -b r2.20
-COPY patches/0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch /root/build/tensorflow/
-COPY patches/0002-PATCH-tensorflow-c-library-enable-delegates.patch /root/build/tensorflow/
-RUN cd ~/build/tensorflow ; \
-    git remote add robclark https://github.com/robclark/tensorflow.git ; \
-    git fetch robclark rusticl-fixes ; \
-    git merge robclark/rusticl-fixes && git rebase origin/r2.20 ; \
-    git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch 0002-PATCH-tensorflow-c-library-enable-delegates.patch
-
-RUN cd ~/build/tensorflow ; \
-    mkdir -p /usr/src ; \
-    git archive --format=tar.gz --output=/usr/src/tensorflow-lite-2.20.tar.gz --prefix=tensorflow-2.20/ HEAD -v
-
-# Grab bazel binaries and start the build.
-RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.1/bazel-7.4.1-linux-arm64
-RUN chmod +x /usr/local/bin/bazel
-RUN cd ~/build/tensorflow && \
-    bazel --batch build --copt=-DCL_DELEGATE_NO_GL \
-        //tensorflow/lite:libtensorflowlite.so \
-        //tensorflow/lite/c:libtensorflowlite_c.so \
-        //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so \
-        //tensorflow/lite/examples/label_image:label_image \
-        //tensorflow/lite/tools/benchmark:benchmark_model
-
-# This likely needs a new place so we can delete ~/build/tensorflow
-RUN cd ~/build/tensorflow ; \
-    cp tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp bazel-bin/tensorflow/lite/examples/label_image/ ; \
-    cd bazel-bin/tensorflow/lite/examples/label_image ; \
-    wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    rm *.zip
-
-RUN git -C ~/build/tensorflow rev-parse HEAD \
-        >~/build/tensorflow/bazel-bin/tensorflow/TFLITE_COMMIT ; \
-    mv ~/build/tensorflow/bazel-bin/tensorflow ~
-
-# Remove build folder
-RUN rm -rf ~/build
-
-# Remove cached files
-RUN rm ~/.cache -rf
-RUN apt clean
-
 #######################################################################
  
 FROM debian:trixie-slim AS fastrpc-build
@@ -126,14 +38,6 @@ RUN apt clean
 
 #######################################################################
 
-FROM debian:bookworm-slim AS models
-
-# QAI Hub exports require user credentials. Keep the build reproducible until
-# pre-exported models can be supplied without embedding credentials in an image.
-RUN mkdir -p /root/models
-
-#######################################################################
-
 FROM debian:trixie-slim AS deploy
 
 # Rusticl leaves drivers disabled by default, so explicitly expose Freedreno to
@@ -170,23 +74,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install the basic mesa dependencies to make our build work
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
 
-# Copy models from models container
-COPY --from=models /root/models /root/models
-
-# Install tensorflow build, no proper debian package
-COPY --from=build /root/tensorflow /root/tensorflow
-COPY run-tflite.sh /
-COPY benchmark-tflite.sh /
-COPY install-gstreamer.sh /
-RUN chmod +x /*.sh
-
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
 
-# Test tensorflow
-RUN cd ~/tensorflow/lite/examples/label_image ; \
-    ./label_image --image=grace_hopper.bmp
 
 ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 
