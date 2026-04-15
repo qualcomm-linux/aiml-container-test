@@ -27,5 +27,5 @@ jobs:
     needs: build-daily
     secrets: inherit
     with:
-      url: https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/qcom-deb-images/21832187961-1/
+      url: ${{ needs.build-daily.outputs.artifacts_url }}
 
