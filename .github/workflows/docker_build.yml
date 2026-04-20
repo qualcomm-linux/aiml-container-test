@@ -39,7 +39,7 @@ jobs:
       uses: docker/setup-buildx-action@v4
 
     - name: Build OCI tarball
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       env:
         DOCKER_BUILD_RECORD_UPLOAD: false
       with:
@@ -60,7 +60,7 @@ jobs:
         cp -v ${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar "${dir}"
 
     - name: Build container and push to registry
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       env:
         DOCKER_BUILD_RECORD_UPLOAD: false
       with:
