@@ -235,7 +235,7 @@ RUN apt clean
 RUN cd ~/tensorflow/lite/examples/label_image ; \
     ./label_image --image=grace_hopper.bmp
 
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 
 #######################################################################
 
