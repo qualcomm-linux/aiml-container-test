@@ -1,0 +1,5 @@
+machines:
+  "Qualcomm Technologies, Inc. Robotics RB3gen2"
+    DSP_LIBRARY_PATH: "/hexagon-v68/;/hexagon-v68/unsigned/"
+  "Arduino Monza":
+    DSP_LIBRARY_PATH: "/hexagon-v75/;/hexagon-v75/unsigned/"

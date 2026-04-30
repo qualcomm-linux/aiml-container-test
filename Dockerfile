@@ -108,23 +108,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
 # Install QNN
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/share/qcom /usr/local/lib -p
 RUN cd ~/build ; \
-       wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
-       unzip v2.36.0.250627.zip ; \
-       rm ~/build/v2.36.0.250627.zip ; \
-       cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp/ ; \
-       rm /usr/local/lib/libSNPE* -rf ; \
-       rm /usr/local/lib/libSnpe* -rf ; \
-       rm ~/build/qairt -rf
-
-# Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
-RUN cd ~/build; \
-       mkdir -p /usr/lib/dsp/cdsp ; \
-       git clone https://github.com/linux-msm/hexagon-dsp-binaries.git ; \
-       cp -v hexagon-dsp-binaries/qcm6490/Thundercomm/RB3gen2/CDSP.HT.2.5.c3-00077-KODIAK-1/* /usr/lib/dsp/cdsp/ ; \
-       rm ~/build/hexagon-dsp-binaries -rf
+	wget https://apigwx-aws.qualcomm.com/qsc/public/v1/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.43.0.260128/v2.43.0.260128.zip; \
+	unzip v2.43.0.260128.zip ; \
+	rm ~/build/v2.43.0.260128.zip ; \
+	rm ~/build/qairt/2.43.0.260128/lib/aarch64-oe-linux-gcc11.2/libSNPE*; \
+	rm ~/build/qairt/2.43.0.260128/lib/aarch64-oe-linux-gcc11.2/libSnpe*; \
+	cp ~/build/qairt/2.43.0.260128/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ; \
+	cp ~/build/qairt/*/lib/hexagon-v* /usr/share/qcom/ -rf; \
+	rm ~/build/qairt -rf
 
 # Remove build folder
 RUN rm -rf ~/build
@@ -225,7 +218,11 @@ COPY --from=build /root/tensorflow /root/tensorflow
 COPY run-tflite.sh /
 COPY benchmark-tflite.sh /
 COPY install-gstreamer.sh /
+COPY install-hexagon-bins.sh /
 RUN chmod +x /*.sh
+RUN mkdir /usr/share/qcom/conf.d -p
+COPY fastrpc_config.yaml /usr/share/qcom/conf.d/
+COPY devices.yaml /
 
 # Remove cached files
 RUN rm ~/.cache -rf

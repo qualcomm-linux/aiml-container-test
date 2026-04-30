@@ -1,0 +1,38 @@
+# source: device-tree and  https://workbench.aihub.qualcomm.com/devices/
+devices:
+  - device_name: Dragonwing RB3 Gen 2 Vision Kit
+    device_dt_model:
+      - Qualcomm Technologies, Inc. Robotics RB3gen2
+    chipset: "Qualcomm® Dragonwing™ RB3 Gen 2 | QCS6490"
+    runtime_support:
+      tensorflow_lite: true
+      onnx_runtime: true
+      ai_engine_direct_qnn: false
+    hexagon_tensor_processor:
+      fp16_precision: true
+      version: v68
+      soc_model: "35"
+    soc_ids:
+      - "497"
+      - "498"
+    hexagon_bin_dir: qcm6490/Thundercomm/RB3gen2/
+    hexagon_bin_dir_prefix: ""
+
+  - device_name: Arduino Monza
+    device_dt_model:
+      - Arduino Monza
+    chipset: "Qualcomm® QCS8275"
+    runtime_support:
+      tensorflow_lite: true
+      onnx_runtime: true
+      ai_engine_direct_qnn: true
+    hexagon_tensor_processor:
+      fp16_precision: true
+      version: v75
+      soc_model: "67"
+    soc_ids:
+      - "675"
+      - "674"
+    hexagon_bin_dir: qcs8300/Qualcomm/QCS8300-RIDE/
+    hexagon_bin_dir_prefix: cdsp-
+
