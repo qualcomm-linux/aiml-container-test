@@ -1,4 +1,33 @@
 #######################################################################
+
+FROM debian:trixie-slim AS fastrpc-build
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install build tools
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool wget unzip libyaml-dev libbsd-dev pkg-config
+
+# Build & Install fastrpc
+RUN mkdir ~/build
+RUN cd ~/build ; \
+	git clone https://github.com/qualcomm/fastrpc.git ; \
+        cd fastrpc ; \
+        GITCOMPILE_NO_MAKE=yes ./gitcompile ; \
+        make -j$(nproc) && \
+        make install DESTDIR=/opt/fastrpc ; \
+        rm ~/build/fastrpc -rf
+
+RUN find /opt/
+
+# Remove build folder
+RUN rm -rf ~/build
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
  
 FROM debian:trixie-slim AS qnn-install
 
@@ -82,7 +111,34 @@ ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 
 #######################################################################
 
-FROM deploy AS fastrpc-deploy
+FROM deploy AS fastrpc-build-deploy
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install libraries needed for fastrpc built-from-source
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libyaml-0-2 libbsd0
+
+# Copy fastrpc, host side libraries and DSP side libraries from the fastrpc-build layer
+COPY --from=fastrpc-build /opt/fastrpc/usr /usr/
+RUN ldconfig
+RUN find /usr | grep fastrpc
+
+# Copy QNN host side libraries and DSP side libraries from the qnn-install layer
+COPY --from=qnn-install /usr/local/lib /usr/local/lib
+RUN find /usr/local/lib
+
+# Copy over DSP libraries
+COPY --from=qnn-install /usr/lib/dsp /usr/lib/dsp
+RUN find /usr/lib/dsp
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
+
+FROM deploy AS fastrpc-deb-deploy
 
 # FastRPC's domain-neutral override reaches the QNN skeletons kept in their
 # CDSP-specific subdirectory without relying on its legacy ADSP-named alias.
@@ -125,7 +181,6 @@ EOF
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
-# Install the FastRPC userspace and its executable CDSP diagnostics.
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
 # Copy QNN host side libraries and DSP side libraries from the qnn-install layer
