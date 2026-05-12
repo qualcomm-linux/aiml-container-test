@@ -1,6 +1,6 @@
 #######################################################################
  
-FROM debian:trixie-slim AS fastrpc-build
+FROM debian:trixie-slim AS qnn-install
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
@@ -129,13 +129,12 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install the FastRPC userspace and its executable CDSP diagnostics.
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
-# Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
-COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
+# Copy QNN host side libraries and DSP side libraries from the qnn-install layer
+COPY --from=qnn-install /usr/local/lib /usr/local/lib
 RUN find /usr/local/lib
 
 # Copy over DSP libraries
-COPY --from=fastrpc-build /usr/lib/dsp /usr/lib/dsp
-COPY --from=fastrpc-build /usr/share/aiml-container /usr/share/aiml-container
+COPY --from=qnn-install /usr/lib/dsp /usr/lib/dsp
 RUN find /usr/lib/dsp
 
 # Remove cached files
