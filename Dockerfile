@@ -28,6 +28,37 @@ RUN rm ~/.cache -rf
 RUN apt clean
 
 #######################################################################
+
+FROM debian-trixie-slim AS fastrpc-deb
+
+# Add repo containing fastrpc, dsp binaries and tflite
+COPY <<EOF /etc/apt/sources.list.d/debusine.sources
+Types: deb deb-src
+URIs: https://deb.debusine.debian.net/debian/r-rbasak-qcom-hexagon-stack-2
+Suites: sid
+Components: main non-free-firmware
+Signed-By:
+ -----BEGIN PGP PUBLIC KEY BLOCK-----
+ .
+ mDMEaWpOVhYJKwYBBAHaRw8BAQdA6gdtyg0BKTS9EA9CAbbY3gk7bOYKY74Clfak
+ 3FjWn220PEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIGRlYmlhbi9yLXJiYXNhay1x
+ Y29tLWhleGFnb24tc3RhY2stMoiQBBMWCgA4FiEEWi95OlWxjLyNwWscPETQboDo
+ XeEFAmlqTlYCGwMFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AACgkQPETQboDoXeFL
+ AQD+Pm5ERzQPJRdxcqekaUVbqKrbyo1i7NPztV0j0YnyDFUA/24Ms1ZS8eV1um+R
+ pqm6Uf5gvyZjJrjMGZWx/hqvriED
+ =P90u
+ -----END PGP PUBLIC KEY BLOCK-----
+EOF
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
  
 FROM debian:trixie-slim AS qnn-install
 
