@@ -123,37 +123,9 @@ RUN apt clean
 
 FROM debian:bookworm-slim AS models
 
-RUN mkdir /build
-
-# Update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
-
-# Install pip to fetch qai_hub, and do the pip thing where you need to break the system
-RUN DEBIAN_FRONTEND=noninteractive apt -y install python3-pip python3-backoff python3-deprecation python3-numpy python3-protobuf python3-requests python3-requests-toolbelt python3-wcwidth python3-idna python3-urllib3 python3-certifi python3-jmespath 
-# Install extra build deps
-RUN DEBIAN_FRONTEND=noninteractive apt -y install gcc libc++-dev
-
-# Install Qualcomm AI hub infrastructure - You CANNOT have 'git' installed, the mmcv install will hang.
-RUN pip install --break-system-packages qai-hub mmcv ultralytics
-
-#   Install the basic mesa dependencies to make the model export work
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install git libgl1 libglib2.0-0 libgl1-mesa-dri mesa-opencl-icd
-
-# Install Yolov6"  model
-RUN pip install --break-system-packages "torch>=2.1,<2.9.0" "setuptools>=77.0.3"
-RUN pip install --break-system-packages "qai-hub-models[yolov6]"
-RUN pip install --break-system-packages "pyarrow==20.0.0"
-RUN python3 -m qai_hub_models.models.yolov6.export --target-runtime tflite --precision float  
-RUN ls /build -la --color
+# QAI Hub exports require user credentials. Keep the build reproducible until
+# pre-exported models can be supplied without embedding credentials in an image.
 RUN mkdir -p /root/models
-#RUN mv /build/yolov6_float/ /root/models/
-
-# Uninstall qai-hub-models, then reinstall it, yay python!
-RUN pip uninstall --break-system-package --no-input -y "qai-hub-models"
-RUN pip install --break-system-packages "qai-hub-models[hrnet_pose]"
-#RUN python3 -m qai_hub_models.models.hrnet_pose.export --target-runtime tflite --precision float  
 
 #######################################################################
 
@@ -249,4 +221,3 @@ RUN find /usr/lib/dsp
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
-
