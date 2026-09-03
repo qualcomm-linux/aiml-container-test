@@ -2,6 +2,8 @@
 
 This repository hosts a Dockerfile and its dependencies that aims to build a container with TFLite installed to aid in testing Qualcomm platforms. 
 
+[![Build][build-badge]][build] [![Daily LAVA][daily-badge]][daily]
+
 ### How to build
 
 This isn't using any fancy features, so a regular build command will work:
@@ -103,6 +105,12 @@ INFO: Inference timings in us: Init: 1361236, First inference: 125113, Warmup (a
 INFO: Note: as the benchmark tool itself affects memory footprint, the following is only APPROXIMATE to the actual memory footprint of the model at runtime. Take the information at your discretion.
 INFO: Memory footprint delta from the start of the tool (MB): init=132.816 overall=132.816
 ```
+
 ## License
 
-*Qualcomm CDI generator* is licensed under the [BSD-3-clause License](https://spdx.org/licenses/BSD-3-Clause.html). See [LICENSE](LICENSE) for the full license text.
+*AIML container test* is licensed under the [BSD-3-clause License](https://spdx.org/licenses/BSD-3-Clause.html). See [LICENSE](LICENSE) for the full license text.
+
+[build]: https://github.com/qualcomm-linux/aiml-container-test/actions/workflows/build-on-push.yml
+[build-badge]: https://img.shields.io/github/actions/workflow/status/qualcomm-linux/aiml-container-test/build-on-push.yml?label=build
+[daily]: https://github.com/qualcomm-linux/aiml-container-test/actions/workflows/build-daily.yml
+[daily-badge]: https://img.shields.io/github/actions/workflow/status/qualcomm-linux/aiml-container-test/build-daily.yml?label=daily%20LAVA

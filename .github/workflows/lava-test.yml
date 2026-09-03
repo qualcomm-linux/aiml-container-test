@@ -3,30 +3,43 @@ name: Tests
 on:
   workflow_call:
     inputs:
-      url:
+      build_url:
+        description: Immutable qcom-deb-images artifact prefix
         required: true
         type: string
+      suite:
+        description: Debian suite used for the LAVA image
+        required: true
+        type: string
+      boards_include:
+        description: JSON array of board names to include; empty selects all boards
+        required: false
+        type: string
+        default: ''
+    secrets:
+      LAVATOKEN:
+        description: API token used to submit jobs to LAVA
+        required: true
 
-# implicitely set all other permissions to none
-permissions:
-  checks: write # EnricoMi/publish-unit-test-result-action
-  contents: read # actions/checkout
-  packages: read # actions/download-artifact
-  pull-requests: write # EnricoMi/publish-unit-test-result-action
+permissions: {}
 
 env:
-  BUILD_URL: "https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/qcom-deb-images/21832187961-1/"
-  CONTAINER_URL: ${{ inputs.url }}
+  BOARDS_INCLUDE: ${{ inputs.boards_include }}
+  BUILD_URL: ${{ inputs.build_url }}
   LAVA_CI: ci/lava/
+  SUITE: ${{ inputs.suite }}
 
 jobs:
   prepare-job-list:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       jobmatrix: ${{ steps.listjobs.outputs.jobmatrix }}
+      has_jobs: ${{ steps.listjobs.outputs.has_jobs }}
     steps:
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -34,89 +47,167 @@ jobs:
         run: |
           echo "Triggered by ${{ github.event_name }}"
           echo "Build URL: $BUILD_URL"
-          echo "Container URL: $CONTAINER_URL"
       - name: "List jobs"
         id: listjobs
         run: |
           # json with display names and relative filenames to LAVA templates
           J=$(find "${LAVA_CI}" -name '*.yaml' -print0 |
-                  jq --compact-output --raw-input --slurp '
+                  jq --compact-output --raw-input --slurp \
+                      --argjson include "${BOARDS_INCLUDE:-[]}" '
                       # split null-delimited list and remove last empty item
                       split("\u0000")[:-1]
                       # remove leading "ci/lava/"
                       | map(sub("^ci/lava/"; ""))
                       # build include entries with target and pretty name
                       | map({
+                          board: split("/")[0],
                           target: .,
+                          slug: (
+                              .
+                              | sub("\\.yaml$"; "")
+                              | gsub("/"; "-")
+                          ),
                           name: (
                               .
                               | sub("\\.yaml$"; "")
                               | gsub("/"; " ")
                           )
                         })
+                      | if ($include | length) > 0 then
+                          map(select(.board as $b | $include | any(. == $b)))
+                        else . end
+                      | map(del(.board))
                       # output as matrix.include list
                       | { include: . }
                       ')
-          echo "jobmatrix=$J" >> $GITHUB_OUTPUT
+          echo "jobmatrix=$J" >>"$GITHUB_OUTPUT"
+          echo "has_jobs=$(echo "$J" | jq '.include | length > 0')" >>"$GITHUB_OUTPUT"
           echo "Preparing testjob files"
 
   submit-job:
     needs: prepare-job-list
+    if: needs.prepare-job-list.outputs.has_jobs == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     name: Submit ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.prepare-job-list.outputs.jobmatrix) }}
     steps:
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Download short-lived container URL
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: container-test-url-${{ github.run_id }}
+          path: container-url
+
       - name: Update test definition ${{ matrix.target }}
+        env:
+          TEMPLATE: ${{ env.LAVA_CI }}${{ matrix.target }}
         run: |
-          # e.g. qrb2210-rb1/container.yaml
-          TARGET="${{ matrix.target }}"
-          TEMPLATE="${LAVA_CI}${TARGET}"
-          # left-side – e.g. qrb2210-rb1
-          DEVICE_TYPE="${TARGET%/*}"
-          BUILD_DOWNLOAD_URL="$BUILD_URL"
-          BUILD_FILE_NAME="unused"
-          sed \
-              -e "s|{{BUILD_DOWNLOAD_URL}}|${BUILD_DOWNLOAD_URL}|g" \
-              -e "s|{{CONTAINER_URL}}|${CONTAINER_URL}|g" \
-              -e "s|{{BUILD_FILE_NAME}}|${BUILD_FILE_NAME}|g" \
-              -e "s|{{DEVICE_TYPE}}|${DEVICE_TYPE}|g" \
-              -e "s|{{GITHUB_REPOSITORY}}|${GITHUB_REPOSITORY}|g" \
-              -e "s|{{GITHUB_RUN_ATTEMPT}}|${GITHUB_RUN_ATTEMPT}|g" \
-              -e "s|{{GITHUB_RUN_ID}}|${GITHUB_RUN_ID}|g" \
-              -e "s|{{GITHUB_SHA}}|${GITHUB_SHA}|g" \
-              -i "$TEMPLATE"
-          cat "$TEMPLATE"
+          set -euo pipefail
+          export CONTAINER_URL
+          CONTAINER_URL="$(<container-url/container_url)"
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          from urllib.parse import parse_qs, urlsplit
+
+          url = os.environ["CONTAINER_URL"]
+          parsed = urlsplit(url)
+          valid_host = (
+              parsed.hostname == "qcom-prd-gh-artifacts.s3.amazonaws.com"
+              or (
+                  parsed.hostname is not None
+                  and parsed.hostname.startswith("qcom-prd-gh-artifacts.s3.")
+                  and parsed.hostname.endswith(".amazonaws.com")
+              )
+          )
+          path_match = re.fullmatch(
+              rf"/{re.escape(os.environ['GITHUB_REPOSITORY'])}/"
+              rf"{re.escape(os.environ['GITHUB_RUN_ID'])}-([1-9][0-9]*)/"
+              r"aiml-container-test-repository\.tar\.gz",
+              parsed.path,
+          )
+          query = parse_qs(parsed.query)
+          if (
+              parsed.scheme != "https"
+              or not valid_host
+              or path_match is None
+              or int(path_match.group(1)) > int(os.environ["GITHUB_RUN_ATTEMPT"])
+              or "X-Amz-Signature" not in query
+              or int(query.get("X-Amz-Expires", ["0"])[0]) > 21600
+          ):
+              raise SystemExit("container URL failed validation")
+
+          replacements = {
+              "{{BUILD_DOWNLOAD_URL}}": os.environ["BUILD_URL"],
+              "{{CONTAINER_URL}}": url,
+              "{{SUITE}}": os.environ["SUITE"],
+              "{{GITHUB_REPOSITORY}}": os.environ["GITHUB_REPOSITORY"],
+              "{{GITHUB_RUN_ATTEMPT}}": os.environ["GITHUB_RUN_ATTEMPT"],
+              "{{GITHUB_RUN_ID}}": os.environ["GITHUB_RUN_ID"],
+              "{{GITHUB_SHA}}": os.environ["GITHUB_SHA"],
+          }
+          template = Path(os.environ["TEMPLATE"])
+          contents = template.read_text()
+          for placeholder, value in replacements.items():
+              if placeholder not in contents:
+                  raise SystemExit(f"missing expected placeholder: {placeholder}")
+              contents = contents.replace(placeholder, value)
+          unresolved = re.findall(r"{{[^{}]+}}", contents)
+          if unresolved:
+              raise SystemExit(f"unresolved placeholders: {', '.join(unresolved)}")
+          template.write_text(contents)
+          PY
+          echo "Prepared validated LAVA definition at $TEMPLATE"
 
       - name: Submit ${{ matrix.target }}
         timeout-minutes: 240
-        uses: foundriesio/lava-action@v12
+        uses: foundriesio/lava-action@3d40f621e0cd5acec50f557783b755f278ca892d # v13
         with:
           lava_token: ${{ secrets.LAVATOKEN }}
           lava_url: 'lava.infra.foundries.io'
           job_definition: ${{ env.LAVA_CI }}${{ matrix.target }}
           wait_for_job: true
-          fail_action_on_failure: false
+          fail_action_on_failure: true
+          fail_action_on_incomplete: true
           save_result_as_artifact: true
           save_job_details: true
+          result_file_name: test-results-${{ inputs.suite }}-${{ matrix.slug }}
+          test_job_file_name_prefix: ${{ inputs.suite }}-${{ github.run_attempt }}-
 
   publish-test-results:
     name: Publish Tests Results
     needs: submit-job
+    if: always() && needs.submit-job.result != 'skipped'
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+      packages: read
+      pull-requests: write
 
     steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v8
+      - name: Download test results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
+          pattern: test-results-${{ inputs.suite }}-*
+
+      - name: Download job details
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+          pattern: ${{ inputs.suite }}-${{ github.run_attempt }}-test-job-*
 
       - name: List files
         run: |
@@ -124,13 +215,13 @@ jobs:
           ls -R $GITHUB_WORKSPACE
 
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
         with:
           files: "${{ github.workspace }}/artifacts/**/*.xml"
 
       - name: Publish Test Job Details
         run: |
-          for json_file in $(find ${{ github.workspace }} -name "test-job-*.json")
+          for json_file in $(find "${{ github.workspace }}" -name "*test-job-*.json")
           do
               DEVICE_TYPE=$(cat "$json_file" | jq -r ".requested_device_type")
               URL=$(cat "$json_file" | jq -r ".url")

@@ -1,0 +1,116 @@
+name: Resolve qcom-deb image
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        description: Successful qcom-deb-images Build run ID; empty selects the latest
+        required: false
+        type: string
+    outputs:
+      build_url:
+        description: Immutable qcom-deb-images artifact prefix
+        value: ${{ jobs.resolve.outputs.build_url }}
+      run_id:
+        description: Selected qcom-deb-images workflow run ID
+        value: ${{ jobs.resolve.outputs.run_id }}
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Resolve qcom-deb daily image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build_url: ${{ steps.resolve.outputs.build_url }}
+      run_id: ${{ steps.resolve.outputs.run_id }}
+    steps:
+      - name: Resolve latest successful image build
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+
+          repo="qualcomm-linux/qcom-deb-images"
+          workflow_path=".github/workflows/build.yml"
+
+          if [[ -n "$REQUESTED_RUN_ID" ]]; then
+            [[ "$REQUESTED_RUN_ID" =~ ^[0-9]+$ ]] || {
+              echo "::error::run_id must contain only decimal digits"
+              exit 1
+            }
+            run_json=$(gh api "repos/$repo/actions/runs/$REQUESTED_RUN_ID")
+          else
+            runs_json=$(gh api --method GET "repos/$repo/actions/workflows/build.yml/runs" \
+              -f branch=main \
+              -f status=success \
+              -f per_page=20)
+            run_json=$(jq -c \
+              --arg workflow_path "$workflow_path" \
+              '[.workflow_runs[]
+                | select(
+                    .event == "workflow_run" and
+                    .head_branch == "main" and
+                    .conclusion == "success" and
+                    .path == $workflow_path
+                  )
+              ]
+              | sort_by(.created_at)
+              | last // empty' <<<"$runs_json")
+          fi
+
+          [[ -n "$run_json" ]] || {
+            echo "::error::No successful qcom-deb-images Build run was found"
+            exit 1
+          }
+
+          run_id=$(jq -er '.id' <<<"$run_json")
+          run_attempt=$(jq -er '.run_attempt' <<<"$run_json")
+          created_at=$(jq -er '.created_at' <<<"$run_json")
+          html_url=$(jq -er '.html_url' <<<"$run_json")
+
+          jq -e \
+            --arg repo "$repo" \
+            --arg workflow_path "$workflow_path" \
+            '.head_repository.full_name == $repo and
+             .event == "workflow_run" and
+             .head_branch == "main" and
+             .conclusion == "success" and
+             .path == $workflow_path' <<<"$run_json" >/dev/null || {
+              echo "::error::Selected run does not match the trusted qcom-deb-images Build workflow"
+              exit 1
+            }
+
+          age_hours=$(( ($(date -u +%s) - $(date -u -d "$created_at" +%s)) / 3600 ))
+          (( age_hours <= 168 )) || {
+            echo "::error::Latest successful qcom-deb-images build is ${age_hours} hours old"
+            exit 1
+          }
+
+          artifacts_json=$(gh api "repos/$repo/actions/runs/$run_id/artifacts")
+          jq -e \
+            '[.artifacts[] | select(.name == "build_url" and (.expired | not))] | length > 0' \
+            <<<"$artifacts_json" >/dev/null || {
+              echo "::error::Selected run has no live build_url artifact"
+              exit 1
+            }
+
+          build_url="https://qli-prod-artifacts.qualcomm.com/qcom-prd-gh-artifacts/$repo/$run_id-$run_attempt/"
+          [[ "$build_url" =~ ^https://qli-prod-artifacts\.qualcomm\.com/qcom-prd-gh-artifacts/qualcomm-linux/qcom-deb-images/[0-9]+-[0-9]+/$ ]] || {
+            echo "::error::Derived build URL failed validation"
+            exit 1
+          }
+
+          echo "run_id=$run_id" >>"$GITHUB_OUTPUT"
+          echo "build_url=$build_url" >>"$GITHUB_OUTPUT"
+          {
+            echo "## qcom-deb-images input"
+            echo
+            echo "- Run: [$run_id attempt $run_attempt]($html_url)"
+            echo "- Created: $created_at (${age_hours} hours old)"
+            echo "- Artifact prefix: \`$build_url\`"
+          } >>"$GITHUB_STEP_SUMMARY"

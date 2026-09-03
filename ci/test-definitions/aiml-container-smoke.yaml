@@ -1,0 +1,24 @@
+metadata:
+  format: Lava-Test Test Definition 1.0
+  name: aiml-container-smoke
+run:
+  steps:
+  - |
+    bash -euo pipefail <<'EOF'
+    test -s aiml-container.tar
+    # QDL starts tests before the asynchronous first-boot resize necessarily
+    # finishes, and loading the image needs the expanded filesystem.
+    systemctl start debos-grow-rootfs.service
+    df -h /
+    systemctl is-active --quiet docker || systemctl start docker
+    load_output=$(docker load -i aiml-container.tar)
+    rm -f aiml-container.tar
+    printf '%s\n' "$load_output"
+    image=$(sed -n 's/^Loaded image: //p' <<<"$load_output" | tail -n1)
+    test -n "$image"
+    device_args=()
+    if compgen -G '/dev/dri/renderD*' >/dev/null; then
+      device_args+=(--device /dev/dri)
+    fi
+    docker run --rm --network host "${device_args[@]}" --entrypoint /bin/bash "$image" -lc '[ -e /dev/card ] || ln -s /dev/dri /dev/card; /run-tflite.sh'
+    EOF

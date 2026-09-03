@@ -3,33 +3,31 @@ name: Check LAVA templates
 on:
   workflow_call:
 
-# implicitely set all other permissions to none
-permissions:
-  contents: read # actions/checkout
+permissions: {}
 
 jobs:
   schema-check:
     runs-on: ubuntu-latest
-    container: lavasoftware/lava-server:2025.04
+    permissions:
+      contents: read
+    container: lavasoftware/lava-server:2026.07
     steps:
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Schema check
         run: |
-          DEVICE_TYPE="my-device"
-          BUILD_FILE_NAME="build.tar.gz"
           BUILD_DOWNLOAD_URL="https://example.com/downloads/1"
-          CONTAINER_URL="https://example.com/downloads/oci.tar"
+          CONTAINER_URL="https://example.com/downloads/aiml-container-test-repository.tar.gz"
           GITHUB_SHA="7e6f96ccf3e911a8a1a18accdbb91991aa0db66e"
+          SUITE="trixie"
 
           find ci/lava/q* -name "*.yaml" -exec sed \
               -e "s|{{BUILD_DOWNLOAD_URL}}|${BUILD_DOWNLOAD_URL}|g" \
               -e "s|{{CONTAINER_URL}}|${CONTAINER_URL}|g" \
-              -e "s|{{BUILD_FILE_NAME}}|${BUILD_FILE_NAME}|g" \
-              -e "s|{{DEVICE_TYPE}}|${DEVICE_TYPE}|g" \
+              -e "s|{{SUITE}}|${SUITE}|g" \
               -e "s|{{GITHUB_REPOSITORY}}|${GITHUB_REPOSITORY}|g" \
               -e "s|{{GITHUB_RUN_ATTEMPT}}|${GITHUB_RUN_ATTEMPT}|g" \
               -e "s|{{GITHUB_RUN_ID}}|${GITHUB_RUN_ID}|g" \

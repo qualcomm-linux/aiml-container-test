@@ -5,11 +5,23 @@ env:
 
 on:
   workflow_call:
+    inputs:
+      create_test_url:
+        description: Create a short-lived container URL for the LAVA job
+        required: false
+        type: boolean
+        default: false
     outputs:
       artifacts_url:
         description: "URL to retrieve build artifacts"
         value: ${{ jobs.build-oci.outputs.url }}
   workflow_dispatch:
+    inputs:
+      create_test_url:
+        description: Create a short-lived container URL for the LAVA job
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-oci:
@@ -58,11 +70,18 @@ jobs:
 
     - name: Stage OCI artifacts for publishing
       run: |
-        set -ux
-        # create a directory for the current run
-        dir="OCI-artifacts"
-        mkdir -v "${dir}"
-        cp -v ${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar "${dir}"
+        set -euxo pipefail
+        mkdir -v OCI-artifacts
+        cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" OCI-artifacts/
+
+        repository="${{ runner.temp }}/aiml-test-repository"
+        rm -rf -- "$repository"
+        mkdir -v "$repository"
+        cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" "$repository/aiml-container.tar"
+        cp -v ci/test-definitions/aiml-container-smoke.yaml "$repository/"
+        tar -C "$repository" -cf - . |
+          gzip -1 >OCI-artifacts/aiml-container-test-repository.tar.gz
+        test -s OCI-artifacts/aiml-container-test-repository.tar.gz
 
     - name: Build container and push to registry
       uses: docker/build-push-action@v7
@@ -97,9 +116,9 @@ jobs:
             --parallelism `nproc` \
             --select-catalogers "+dpkg-db-cataloger,+python-package-cataloger" \
             --source-name aiml-container \
-            --source-version "${{ env.BUILD_REFERENCE }}" \
+            --source-version "${BUILD_REFERENCE}" \
             -v \
-            OCI-artifacts/aiml-container-${{ env.BUILD_REFERENCE }}.tar
+            "OCI-artifacts/aiml-container-${BUILD_REFERENCE}.tar"
 
     - name: Stage SBOMs for publishing
       run: |
@@ -125,6 +144,35 @@ jobs:
         destination: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/
         s3_bucket: qcom-prd-gh-artifacts
         path: OCI-artifacts
+
+    - name: Create short-lived LAVA download URL
+      if: inputs.create_test_url
+      env:
+        ARTIFACT_FILE: aiml-container-test-repository.tar.gz
+        DESTINATION: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+        S3_BUCKET: qcom-prd-gh-artifacts
+      run: |
+        set -euo pipefail
+        command -v aws >/dev/null
+        aws sts get-caller-identity >/dev/null
+        object_key="${DESTINATION}/${ARTIFACT_FILE}"
+        aws s3api head-object --bucket "$S3_BUCKET" --key "$object_key" >/dev/null
+        url="$(aws s3 presign "s3://${S3_BUCKET}/${object_key}" --expires-in 21600)"
+        case "$url" in
+          https://*) ;;
+          *) echo "::error::AWS did not return an HTTPS URL"; exit 1 ;;
+        esac
+        printf '%s\n' "$url" >"${{ runner.temp }}/container_url"
+
+    - name: Upload short-lived LAVA download URL
+      if: inputs.create_test_url
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: container-test-url-${{ github.run_id }}
+        path: ${{ runner.temp }}/container_url
+        retention-days: 1
+        if-no-files-found: error
+        overwrite: true
 
     - name: "Print output"
       env:
