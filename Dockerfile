@@ -11,20 +11,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
 
-# Pull modified packages builds from Qartifactory repo
-RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
-COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
-# QArtifactory qsc-deb-releases repository
-# NB: publishing Sources indices for deb-src isn't supported by Artifactory,
-# but sources are published with other packages files
-Types: deb
-URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
-Suites: trixie-overlay
-Components: main
-Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
-Enabled: no
-EOF
-
 # Enable Backports repo, grab mesa from there
 COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
 Types: deb deb-src
@@ -88,7 +74,9 @@ RUN cd ~/build/tensorflow ; \
     unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
     rm *.zip
 
-RUN mv ~/build/tensorflow/bazel-bin/tensorflow ~
+RUN git -C ~/build/tensorflow rev-parse HEAD \
+        >~/build/tensorflow/bazel-bin/tensorflow/TFLITE_COMMIT ; \
+    mv ~/build/tensorflow/bazel-bin/tensorflow ~
 
 # Remove build folder
 RUN rm -rf ~/build
@@ -107,14 +95,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
-# Install QNN
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib
+# Install QAIRT host libraries and DSP skeletons for every supported Hexagon architecture
+ARG QAIRT_VERSION=2.47.0.260601
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib /usr/share/aiml-container
 RUN cd ~/build ; \
-       wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
-       unzip v2.36.0.250627.zip ; \
-       rm ~/build/v2.36.0.250627.zip ; \
-       cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp/ ; \
+       wget "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip"; \
+       unzip "v${QAIRT_VERSION}.zip" ; \
+       rm ~/build/v${QAIRT_VERSION}.zip ; \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
+       printf '%s\n' "${QAIRT_VERSION}" >/usr/share/aiml-container/qairt-version ; \
        rm /usr/local/lib/libSNPE* -rf ; \
        rm /usr/local/lib/libSnpe* -rf ; \
        rm ~/build/qairt -rf
@@ -137,60 +127,22 @@ RUN apt clean
 
 FROM debian:bookworm-slim AS models
 
-RUN mkdir /build
-
-# Update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
-
-# Install pip to fetch qai_hub, and do the pip thing where you need to break the system
-RUN DEBIAN_FRONTEND=noninteractive apt -y install python3-pip python3-backoff python3-deprecation python3-numpy python3-protobuf python3-requests python3-requests-toolbelt python3-wcwidth python3-idna python3-urllib3 python3-certifi python3-jmespath 
-# Install extra build deps
-RUN DEBIAN_FRONTEND=noninteractive apt -y install gcc libc++-dev
-
-# Install Qualcomm AI hub infrastructure - You CANNOT have 'git' installed, the mmcv install will hang.
-RUN pip install --break-system-packages qai-hub mmcv ultralytics
-
-#   Install the basic mesa dependencies to make the model export work
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install git libgl1 libglib2.0-0 libgl1-mesa-dri mesa-opencl-icd
-
-# Install Yolov6"  model
-RUN pip install --break-system-packages "torch>=2.1,<2.9.0" "setuptools>=77.0.3"
-RUN pip install --break-system-packages "qai-hub-models[yolov6]"
-RUN pip install --break-system-packages "pyarrow==20.0.0"
-RUN python3 -m qai_hub_models.models.yolov6.export --target-runtime tflite --precision float  
-RUN ls /build -la --color
+# QAI Hub exports require user credentials. Keep the build reproducible until
+# pre-exported models can be supplied without embedding credentials in an image.
 RUN mkdir -p /root/models
-#RUN mv /build/yolov6_float/ /root/models/
-
-# Uninstall qai-hub-models, then reinstall it, yay python!
-RUN pip uninstall --break-system-package --no-input -y "qai-hub-models"
-RUN pip install --break-system-packages "qai-hub-models[hrnet_pose]"
-#RUN python3 -m qai_hub_models.models.hrnet_pose.export --target-runtime tflite --precision float  
 
 #######################################################################
 
 FROM debian:trixie-slim AS deploy
 
+# Rusticl leaves drivers disabled by default, so explicitly expose Freedreno to
+# OpenCL consumers instead of letting GPU workloads fail with no devices.
+ENV RUSTICL_ENABLE=freedreno
+
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
-
-# Pull modified packages builds from Qartifactory repo
-RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
-COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
-# QArtifactory qsc-deb-releases repository
-# NB: publishing Sources indices for deb-src isn't supported by Artifactory,
-# but sources are published with other packages files
-Types: deb
-URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
-Suites: trixie-overlay
-Components: main
-Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
-Enabled: no
-EOF
 
 # Enable Backports repo, grab mesa from there
 COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
@@ -241,29 +193,48 @@ ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 
 FROM deploy AS fastrpc-deploy
 
-# Add repo containing fastrpc, dsp binaries and tflite
-COPY <<EOF /etc/apt/sources.list.d/debusine.sources
-Types: deb deb-src
-URIs: https://deb.debusine.debian.net/debian/r-rbasak-qcom-hexagon-stack-2
-Suites: sid
-Components: main non-free-firmware
+# FastRPC's domain-neutral override reaches the QNN skeletons kept in their
+# CDSP-specific subdirectory without relying on its legacy ADSP-named alias.
+ENV DSP_LIBRARY_PATH=/usr/lib/dsp/cdsp
+
+# CDI supplies MACHINE_NAME and mounts the matching host DSP directory; these
+# mappings let FastRPC select that directory without another runtime bind.
+COPY <<EOF /usr/share/hexagon-dsp/conf.d/aiml-container-machines.yaml
+machines:
+  Qualcomm Technologies, Inc. Robotics RB3gen2:
+    DSP_LIBRARY_PATH: qcm6490/Thundercomm/RB3gen2/dsp
+  Arduino Monza:
+    DSP_LIBRARY_PATH: qcs8300/Arduino/Monza/dsp
+  Arduino VENTUNO Q:
+    DSP_LIBRARY_PATH: qcs8300/Arduino/Monza/dsp
+  Qualcomm Technologies, Inc. Monaco Monza addons:
+    DSP_LIBRARY_PATH: qcs8300/Arduino/Monza/dsp
+EOF
+
+# Use the same maintained FastRPC packages as the qcom-deb host image so the
+# container userspace stays compatible with its kernel and CDSP firmware.
+COPY <<EOF /etc/apt/sources.list.d/qli.sources
+Types: deb
+URIs: https://deb.debusine.qualcomm.com/qualcomm/qli
+Suites: trixie
+Components: main contrib non-free-firmware non-free
+Enabled: yes
 Signed-By:
  -----BEGIN PGP PUBLIC KEY BLOCK-----
  .
- mDMEaWpOVhYJKwYBBAHaRw8BAQdA6gdtyg0BKTS9EA9CAbbY3gk7bOYKY74Clfak
- 3FjWn220PEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIGRlYmlhbi9yLXJiYXNhay1x
- Y29tLWhleGFnb24tc3RhY2stMoiQBBMWCgA4FiEEWi95OlWxjLyNwWscPETQboDo
- XeEFAmlqTlYCGwMFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AACgkQPETQboDoXeFL
- AQD+Pm5ERzQPJRdxcqekaUVbqKrbyo1i7NPztV0j0YnyDFUA/24Ms1ZS8eV1um+R
- pqm6Uf5gvyZjJrjMGZWx/hqvriED
- =P90u
+ mDMEag8p/xYJKwYBBAHaRw8BAQdAdB6JSNF1OXxnsTgp4VTUekW52BM7e6ZQVRsq
+ QT5QDaS0JEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIHF1YWxjb21tL3FsaYiQBBMW
+ CgA4FiEEOwuFfyf8aPE5SQakb8qSvoHfw8IFAmoPKf8CGwMFCwkIBwIGFQoJCAsC
+ BBYCAwECHgECF4AACgkQb8qSvoHfw8Lz1gEA9XocADbvqUgZQc0LceThn7vMI98d
+ kTJoiInuulQ6rEUBANo+GOKILH71VRnZ5jWtsu7IlVk7oUMlTtC0eE5tcBwB
+ =bX6V
  -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
-# Install libyaml, fastrpc depends on it. Once we use proper debian packages, this workaround can go away
+# Install the FastRPC userspace and its executable CDSP diagnostics.
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
 # Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
@@ -272,9 +243,9 @@ RUN find /usr/local/lib
 
 # Copy over DSP libraries
 COPY --from=fastrpc-build /usr/lib/dsp /usr/lib/dsp
+COPY --from=fastrpc-build /usr/share/aiml-container /usr/share/aiml-container
 RUN find /usr/lib/dsp
 
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
-

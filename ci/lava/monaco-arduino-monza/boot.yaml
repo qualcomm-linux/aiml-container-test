@@ -13,7 +13,7 @@ actions:
     firehose_program: prog_firehose_ddr.elf
     rawprogram: rawprogram0.xml
     patch: patch0.xml
-    path: flash_qrb2210-rb1_emmc
+    path: flash_monaco-arduino-monza_emmc
     storage: emmc
     debug: true
     timeout:
@@ -58,6 +58,8 @@ actions:
       repository: https://github.com/linaro/test-definitions.git
       parameters:
         SKIP_INSTALL: "True"
+        WAIT_TIME: 60
+        DEVICE: wlp3s0
     - from: url
       name: "aiml-container-smoke"
       path: aiml-container-smoke.yaml
@@ -66,7 +68,7 @@ actions:
 context:
   lava_test_results_dir: /home/lava-%s
   test_character_delay: 10
-device_type: qrb2210-rb1
+device_type: monaco-arduino-monza
 job_name: AIML container {{SUITE}} {{GITHUB_REPOSITORY}} {{GITHUB_RUN_ID}}-{{GITHUB_RUN_ATTEMPT}}
 metadata:
   build-commit: '{{GITHUB_SHA}}'

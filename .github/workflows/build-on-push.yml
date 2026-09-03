@@ -4,21 +4,44 @@ on:
   push:
     branches: [main, ci-staging]
 
-# implicitely set all other permissions to none
-permissions:
-  checks: write # lava-test.yml
-  contents: read # docker_build.yml lava-schema-check.yml lava-test.yml
-  packages: read # lava-test.yml
-  pull-requests: write # lava-test.yml
+permissions: {}
 
 jobs:
+  resolve-qcom-image:
+    uses: ./.github/workflows/resolve-qcom-image.yml
+    permissions:
+      contents: read
+
   build-daily:
     uses: ./.github/workflows/docker_build.yml
+    permissions:
+      contents: read
+    with:
+      create_test_url: true
+
   schema-check:
     uses: ./.github/workflows/lava-schema-check.yml
+    permissions:
+      contents: read
+
   test:
     uses: ./.github/workflows/lava-test.yml
-    needs: [build-daily, schema-check]
-    secrets: inherit
+    needs: [resolve-qcom-image, build-daily, schema-check]
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      packages: read
+      pull-requests: write
+    secrets:
+      LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
-      url: ${{ needs.build-daily.outputs.artifacts_url }}
+      build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
+      container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}
+      suite: trixie

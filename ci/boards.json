@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "boards": {
+    "qrb2210-rb1": {
+      "display_name": "RB1",
+      "device_types": [
+        "qrb2210-rb1"
+      ]
+    },
+    "qcs6490-rb3gen2-vision-kit": {
+      "display_name": "RB3Gen2",
+      "device_types": [
+        "qcs6490-rb3gen2",
+        "qcs6490-rb3gen2-vision-kit"
+      ]
+    },
+    "monaco-arduino-monza": {
+      "display_name": "Arduino VENTUNO Q",
+      "device_types": [
+        "monaco-arduino-monza"
+      ]
+    }
+  }
+}

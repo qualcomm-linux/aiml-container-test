@@ -5,11 +5,26 @@ env:
 
 on:
   workflow_call:
+    inputs:
+      create_test_url:
+        description: Create a short-lived container URL for the LAVA job
+        required: false
+        type: boolean
+        default: false
     outputs:
       artifacts_url:
         description: "URL to retrieve build artifacts"
         value: ${{ jobs.build-oci.outputs.url }}
+      container_digest:
+        description: Content digest of the tested container image
+        value: ${{ jobs.build-oci.outputs.container_digest }}
   workflow_dispatch:
+    inputs:
+      create_test_url:
+        description: Create a short-lived container URL for the LAVA job
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-oci:
@@ -17,7 +32,8 @@ jobs:
     if: github.repository_owner == 'qualcomm-linux'
     outputs:
       url: ${{ steps.upload_artifacts_s3.outputs.url }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
-    runs-on: [ self-hosted, qcom-u2404, arm64 ]
+      container_digest: ${{ steps.container_metadata.outputs.digest }}
+    runs-on: [ self-hosted, qcom-u2404, amd64 ]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
@@ -35,6 +51,11 @@ jobs:
             }
           }
 
+    - name: Set up ARM64 emulation
+      uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+      with:
+        platforms: arm64
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
 
@@ -51,13 +72,43 @@ jobs:
         cache-to: type=gha,mode=max
         outputs: type=docker,dest=${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
 
+    - name: Record container image digest
+      id: container_metadata
+      run: |
+        set -euo pipefail
+        image_tar="${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar"
+        config_file=$(tar -xOf "$image_tar" manifest.json | jq -er '.[0].Config')
+        config_digest=$(tar -xOf "$image_tar" "$config_file" |
+          sha256sum | awk '{ print $1 }')
+        [[ "$config_digest" =~ ^[0-9a-f]{64}$ ]]
+        echo "digest=sha256:${config_digest}" >>"$GITHUB_OUTPUT"
+
     - name: Stage OCI artifacts for publishing
       run: |
-        set -ux
-        # create a directory for the current run
-        dir="OCI-artifacts"
-        mkdir -v "${dir}"
-        cp -v ${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar "${dir}"
+        set -euxo pipefail
+        mkdir -v OCI-artifacts
+        cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" OCI-artifacts/
+
+        repository="${{ runner.temp }}/aiml-test-repository"
+        rm -rf -- "$repository"
+        mkdir -v "$repository"
+        cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" "$repository/aiml-container.tar"
+        cp -v ci/test-definitions/aiml-container-smoke.yaml "$repository/"
+        cdi_generator_commit=54c3cac049cee5afb1b983596d5dda6802b0d568
+        curl --fail --location --retry 3 \
+          --output "$repository/qualcomm-cdi-generator.py" \
+          "https://raw.githubusercontent.com/qualcomm-linux/qualcomm-CDI-generator/${cdi_generator_commit}/qualcomm-cdi-generator.py"
+        curl --fail --location --retry 3 \
+          --output "$repository/qualcomm-cdi-generator.LICENSE.txt" \
+          "https://raw.githubusercontent.com/qualcomm-linux/qualcomm-CDI-generator/${cdi_generator_commit}/LICENSE.txt"
+        printf '%s  %s\n' \
+          db3c538504e6a156838734ac7ada11a7d99ff65af35705830f8a66deb34c2d46 "$repository/qualcomm-cdi-generator.py" \
+          44c38c8e8170268d5c1469c359f46b0a4e11a53f7d68b5a561030c9044b1bb0d "$repository/qualcomm-cdi-generator.LICENSE.txt" |
+          sha256sum --check --strict
+        chmod 0755 "$repository/qualcomm-cdi-generator.py"
+        tar -C "$repository" -cf - . |
+          gzip -1 >OCI-artifacts/aiml-container-test-repository.tar.gz
+        test -s OCI-artifacts/aiml-container-test-repository.tar.gz
 
     - name: Build container and push to registry
       uses: docker/build-push-action@v7
@@ -92,9 +143,9 @@ jobs:
             --parallelism `nproc` \
             --select-catalogers "+dpkg-db-cataloger,+python-package-cataloger" \
             --source-name aiml-container \
-            --source-version "${{ env.BUILD_REFERENCE }}" \
+            --source-version "${BUILD_REFERENCE}" \
             -v \
-            OCI-artifacts/aiml-container-${{ env.BUILD_REFERENCE }}.tar
+            "OCI-artifacts/aiml-container-${BUILD_REFERENCE}.tar"
 
     - name: Stage SBOMs for publishing
       run: |
@@ -120,6 +171,35 @@ jobs:
         destination: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/
         s3_bucket: qcom-prd-gh-artifacts
         path: OCI-artifacts
+
+    - name: Create short-lived LAVA download URL
+      if: inputs.create_test_url
+      env:
+        ARTIFACT_FILE: aiml-container-test-repository.tar.gz
+        DESTINATION: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+        S3_BUCKET: qcom-prd-gh-artifacts
+      run: |
+        set -euo pipefail
+        command -v aws >/dev/null
+        aws sts get-caller-identity >/dev/null
+        object_key="${DESTINATION}/${ARTIFACT_FILE}"
+        aws s3api head-object --bucket "$S3_BUCKET" --key "$object_key" >/dev/null
+        url="$(aws s3 presign "s3://${S3_BUCKET}/${object_key}" --expires-in 21600)"
+        case "$url" in
+          https://*) ;;
+          *) echo "::error::AWS did not return an HTTPS URL"; exit 1 ;;
+        esac
+        printf '%s\n' "$url" >"${{ runner.temp }}/container_url"
+
+    - name: Upload short-lived LAVA download URL
+      if: inputs.create_test_url
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: container-test-url-${{ github.run_id }}
+        path: ${{ runner.temp }}/container_url
+        retention-days: 1
+        if-no-files-found: error
+        overwrite: true
 
     - name: "Print output"
       env:

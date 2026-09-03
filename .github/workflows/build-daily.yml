@@ -1,31 +1,86 @@
 name: Daily Build
 
 on:
-  # run daily at 8:30am
   schedule:
     - cron: '30 8 * * *'
-  # allow manual runs
   workflow_dispatch:
+    inputs:
+      qcom_build_run_id:
+        description: Successful run ID for the selected qcom-deb-images source; empty selects the latest
+        required: false
+        type: string
+      image_source:
+        description: qcom-deb-images workflow family
+        required: true
+        default: generic
+        type: choice
+        options:
+          - generic
+          - arduino
+      boards_include:
+        description: JSON array of LAVA board names
+        required: true
+        default: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]'
+        type: string
+      suite:
+        description: Debian suite used for the LAVA image
+        required: true
+        default: trixie
+        type: choice
+        options:
+          - trixie
+          - forky
 
-# implicitely set all other permissions to none
-permissions:
-  checks: write # lava-test.yml
-  contents: read # docker_build.yml lava-test.yml
-  packages: read # lava-test.yml
-  pull-requests: write # lava-test.yml
+permissions: {}
+
+concurrency:
+  group: daily-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  resolve-qcom-image:
+    if: >-
+      github.repository == 'qualcomm-linux/aiml-container-test' &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main')
+    uses: ./.github/workflows/resolve-qcom-image.yml
+    permissions:
+      contents: read
+    with:
+      run_id: ${{ inputs.qcom_build_run_id }}
+      source: ${{ inputs.image_source || 'generic' }}
+
   build-daily:
-    # don't run cron from forks of the main repository or from other branches
-    if: github.repository == 'qualcomm-linux/aiml-container-test' && github.ref == 'refs/heads/main'
+    name: Build AIML container
+    needs: resolve-qcom-image
     uses: ./.github/workflows/docker_build.yml
+    permissions:
+      contents: read
+    with:
+      create_test_url: true
 
   test-daily:
-    # don't run cron from forks of the main repository or from other branches
-    if: github.repository == 'qualcomm-linux/qcom-deb-images' && github.ref == 'refs/heads/main'
+    name: Test AIML container in LAVA
+    needs:
+      - resolve-qcom-image
+      - build-daily
     uses: ./.github/workflows/lava-test.yml
-    needs: build-daily
-    secrets: inherit
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      packages: read
+      pull-requests: write
+    secrets:
+      LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
-      url: ${{ needs.build-daily.outputs.artifacts_url }}
-
+      build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
+      boards_include: ${{ inputs.boards_include || '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]' }}
+      container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}
+      suite: ${{ inputs.suite || 'trixie' }}
