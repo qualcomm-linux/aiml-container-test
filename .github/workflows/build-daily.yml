@@ -6,8 +6,21 @@ on:
   workflow_dispatch:
     inputs:
       qcom_build_run_id:
-        description: Successful qcom-deb-images Build run ID; empty selects the latest
+        description: Successful run ID for the selected qcom-deb-images source; empty selects the latest
         required: false
+        type: string
+      image_source:
+        description: qcom-deb-images workflow family
+        required: true
+        default: generic
+        type: choice
+        options:
+          - generic
+          - arduino
+      boards_include:
+        description: JSON array of LAVA board names
+        required: true
+        default: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]'
         type: string
       suite:
         description: Debian suite used for the LAVA image
@@ -35,6 +48,7 @@ jobs:
       contents: read
     with:
       run_id: ${{ inputs.qcom_build_run_id }}
+      source: ${{ inputs.image_source || 'generic' }}
 
   build-daily:
     name: Build AIML container
@@ -61,4 +75,5 @@ jobs:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
       build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
+      boards_include: ${{ inputs.boards_include || '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]' }}
       suite: ${{ inputs.suite || 'trixie' }}

@@ -24,7 +24,7 @@ jobs:
           GITHUB_SHA="7e6f96ccf3e911a8a1a18accdbb91991aa0db66e"
           SUITE="trixie"
 
-          find ci/lava/q* -name "*.yaml" -exec sed \
+          find ci/lava -mindepth 2 -maxdepth 2 -name "*.yaml" -exec sed \
               -e "s|{{BUILD_DOWNLOAD_URL}}|${BUILD_DOWNLOAD_URL}|g" \
               -e "s|{{CONTAINER_URL}}|${CONTAINER_URL}|g" \
               -e "s|{{SUITE}}|${SUITE}|g" \

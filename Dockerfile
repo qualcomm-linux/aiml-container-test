@@ -93,14 +93,15 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
-# Install QNN
+# Install QAIRT host libraries and DSP skeletons for every supported Hexagon architecture
+ARG QAIRT_VERSION=2.47.0.260601
 RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib
 RUN cd ~/build ; \
-       wget https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.36.0.250627/v2.36.0.250627.zip; \
-       unzip v2.36.0.250627.zip ; \
-       rm ~/build/v2.36.0.250627.zip ; \
-       cp -v ~/build/qairt/2.36.0.250627/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/2.36.0.250627/lib/hexagon-v68/unsigned/* /usr/lib/dsp/cdsp/ ; \
+       wget "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip"; \
+       unzip "v${QAIRT_VERSION}.zip" ; \
+       rm ~/build/v${QAIRT_VERSION}.zip ; \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
        rm /usr/local/lib/libSNPE* -rf ; \
        rm /usr/local/lib/libSnpe* -rf ; \
        rm ~/build/qairt -rf
@@ -193,12 +194,18 @@ FROM deploy AS fastrpc-deploy
 # CDSP-specific subdirectory without relying on its legacy ADSP-named alias.
 ENV DSP_LIBRARY_PATH=/usr/lib/dsp/cdsp
 
-# CDI supplies MACHINE_NAME and mounts the matching host DSP directory; this
-# mapping lets FastRPC select that directory without another runtime bind.
-COPY <<EOF /usr/share/hexagon-dsp/conf.d/aiml-container-rb3gen2.yaml
+# CDI supplies MACHINE_NAME and mounts the matching host DSP directory; these
+# mappings let FastRPC select that directory without another runtime bind.
+COPY <<EOF /usr/share/hexagon-dsp/conf.d/aiml-container-machines.yaml
 machines:
   Qualcomm Technologies, Inc. Robotics RB3gen2:
     DSP_LIBRARY_PATH: qcm6490/Thundercomm/RB3gen2/dsp
+  Arduino Monza:
+    DSP_LIBRARY_PATH: qcs8300/Arduino/Monza/dsp
+  Arduino VENTUNO Q:
+    DSP_LIBRARY_PATH: qcs8300/Arduino/Monza/dsp
+  Qualcomm Technologies, Inc. Monaco Monza addons:
+    DSP_LIBRARY_PATH: qcs8300/Arduino/Monza/dsp
 EOF
 
 # Use the same maintained FastRPC packages as the qcom-deb host image so the

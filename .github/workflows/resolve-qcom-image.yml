@@ -4,8 +4,13 @@ on:
   workflow_call:
     inputs:
       run_id:
-        description: Successful qcom-deb-images Build run ID; empty selects the latest
+        description: Successful qcom-deb-images run ID; empty selects the latest
         required: false
+        type: string
+      source:
+        description: Trusted qcom-deb-images workflow family
+        required: false
+        default: generic
         type: string
     outputs:
       build_url:
@@ -32,11 +37,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_RUN_ID: ${{ inputs.run_id }}
+          SOURCE: ${{ inputs.source }}
         run: |
           set -euo pipefail
 
           repo="qualcomm-linux/qcom-deb-images"
-          workflow_path=".github/workflows/build.yml"
+          case "$SOURCE" in
+            generic)
+              workflow_file="build.yml"
+              workflow_path=".github/workflows/build.yml"
+              expected_event="workflow_run"
+              ;;
+            arduino)
+              workflow_file="linux-arduino.yml"
+              workflow_path=".github/workflows/linux-arduino.yml"
+              expected_event="schedule"
+              ;;
+            *)
+              echo "::error::Unknown image source: $SOURCE"
+              exit 1
+              ;;
+          esac
 
           if [[ -n "$REQUESTED_RUN_ID" ]]; then
             [[ "$REQUESTED_RUN_ID" =~ ^[0-9]+$ ]] || {
@@ -45,17 +66,18 @@ jobs:
             }
             run_json=$(gh api "repos/$repo/actions/runs/$REQUESTED_RUN_ID")
           else
-            runs_json=$(gh api --method GET "repos/$repo/actions/workflows/build.yml/runs" \
+            runs_json=$(gh api --method GET "repos/$repo/actions/workflows/$workflow_file/runs" \
               -f branch=main \
               -f status=success \
               -f per_page=20)
             run_json=$(jq -c \
               --arg workflow_path "$workflow_path" \
+              --arg expected_event "$expected_event" \
               '[.workflow_runs[]
                 | select(
-                    .event == "workflow_run" and
-                    .head_branch == "main" and
-                    .conclusion == "success" and
+                   .event == $expected_event and
+                   .head_branch == "main" and
+                   .conclusion == "success" and
                     .path == $workflow_path
                   )
               ]
@@ -76,12 +98,13 @@ jobs:
           jq -e \
             --arg repo "$repo" \
             --arg workflow_path "$workflow_path" \
+            --arg expected_event "$expected_event" \
             '.head_repository.full_name == $repo and
-             .event == "workflow_run" and
+             .event == $expected_event and
              .head_branch == "main" and
              .conclusion == "success" and
              .path == $workflow_path' <<<"$run_json" >/dev/null || {
-              echo "::error::Selected run does not match the trusted qcom-deb-images Build workflow"
+              echo "::error::Selected run does not match the trusted qcom-deb-images $SOURCE workflow"
               exit 1
             }
 
@@ -110,6 +133,7 @@ jobs:
           {
             echo "## qcom-deb-images input"
             echo
+            echo "- Image source: \`$SOURCE\`"
             echo "- Run: [$run_id attempt $run_attempt]($html_url)"
             echo "- Created: $created_at (${age_hours} hours old)"
             echo "- Artifact prefix: \`$build_url\`"
