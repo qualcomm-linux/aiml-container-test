@@ -7,10 +7,19 @@ on:
 permissions: {}
 
 jobs:
-  resolve-qcom-image:
+  resolve-qcom-image-generic:
     uses: ./.github/workflows/resolve-qcom-image.yml
     permissions:
       contents: read
+    with:
+      source: generic
+
+  resolve-qcom-image-arduino:
+    uses: ./.github/workflows/resolve-qcom-image.yml
+    permissions:
+      contents: read
+    with:
+      source: arduino
 
   build-daily:
     uses: ./.github/workflows/docker_build.yml
@@ -24,9 +33,9 @@ jobs:
     permissions:
       contents: read
 
-  test:
+  test-generic:
     uses: ./.github/workflows/lava-test.yml
-    needs: [resolve-qcom-image, build-daily, schema-check]
+    needs: [resolve-qcom-image-generic, build-daily, schema-check]
     permissions:
       actions: read
       checks: write
@@ -36,12 +45,36 @@ jobs:
     secrets:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
-      build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
+      boards_include: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]'
+      build_url: ${{ needs.resolve-qcom-image-generic.outputs.build_url }}
       container_digest: ${{ needs.build-daily.outputs.container_digest }}
-      qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
-      qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
-      qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
-      qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
-      qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
-      qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}
+      qcom_event: ${{ needs.resolve-qcom-image-generic.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image-generic.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image-generic.outputs.run_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image-generic.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image-generic.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image-generic.outputs.workflow }}
+      suite: trixie
+
+  test-arduino:
+    uses: ./.github/workflows/lava-test.yml
+    needs: [resolve-qcom-image-arduino, build-daily, schema-check]
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      packages: read
+      pull-requests: write
+    secrets:
+      LAVATOKEN: ${{ secrets.LAVATOKEN }}
+    with:
+      boards_include: '["monaco-arduino-monza"]'
+      build_url: ${{ needs.resolve-qcom-image-arduino.outputs.build_url }}
+      container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      qcom_event: ${{ needs.resolve-qcom-image-arduino.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image-arduino.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image-arduino.outputs.run_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image-arduino.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image-arduino.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image-arduino.outputs.workflow }}
       suite: trixie
