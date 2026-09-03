@@ -11,20 +11,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
 
-# Pull modified packages builds from Qartifactory repo
-RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
-COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
-# QArtifactory qsc-deb-releases repository
-# NB: publishing Sources indices for deb-src isn't supported by Artifactory,
-# but sources are published with other packages files
-Types: deb
-URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
-Suites: trixie-overlay
-Components: main
-Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
-Enabled: no
-EOF
-
 # Enable Backports repo, grab mesa from there
 COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
 Types: deb deb-src
@@ -177,20 +163,6 @@ FROM debian:trixie-slim AS deploy
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
-
-# Pull modified packages builds from Qartifactory repo
-RUN wget https://github.com/qualcomm-linux/qcom-deb-images/raw/refs/heads/main/debos-recipes/overlays/qsc-deb-releases/etc/apt/keyrings/qsc-deb-releases.asc -O /etc/apt/keyrings/qsc-deb-releases.asc
-COPY <<EOF /etc/apt/sources.list.d/qsc-deb-releases.sources
-# QArtifactory qsc-deb-releases repository
-# NB: publishing Sources indices for deb-src isn't supported by Artifactory,
-# but sources are published with other packages files
-Types: deb
-URIs: https://qartifactory-edge.qualcomm.com/artifactory/qsc-deb-releases
-Suites: trixie-overlay
-Components: main
-Signed-By: /etc/apt/keyrings/qsc-deb-releases.asc
-Enabled: no
-EOF
 
 # Enable Backports repo, grab mesa from there
 COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
