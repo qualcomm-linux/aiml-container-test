@@ -74,7 +74,9 @@ RUN cd ~/build/tensorflow ; \
     unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
     rm *.zip
 
-RUN mv ~/build/tensorflow/bazel-bin/tensorflow ~
+RUN git -C ~/build/tensorflow rev-parse HEAD \
+        >~/build/tensorflow/bazel-bin/tensorflow/TFLITE_COMMIT ; \
+    mv ~/build/tensorflow/bazel-bin/tensorflow ~
 
 # Remove build folder
 RUN rm -rf ~/build
@@ -95,13 +97,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
 # Install QAIRT host libraries and DSP skeletons for every supported Hexagon architecture
 ARG QAIRT_VERSION=2.47.0.260601
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib /usr/share/aiml-container
 RUN cd ~/build ; \
        wget "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip"; \
        unzip "v${QAIRT_VERSION}.zip" ; \
        rm ~/build/v${QAIRT_VERSION}.zip ; \
        cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
        cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
+       printf '%s\n' "${QAIRT_VERSION}" >/usr/share/aiml-container/qairt-version ; \
        rm /usr/local/lib/libSNPE* -rf ; \
        rm /usr/local/lib/libSnpe* -rf ; \
        rm ~/build/qairt -rf
@@ -240,6 +243,7 @@ RUN find /usr/local/lib
 
 # Copy over DSP libraries
 COPY --from=fastrpc-build /usr/lib/dsp /usr/lib/dsp
+COPY --from=fastrpc-build /usr/share/aiml-container /usr/share/aiml-container
 RUN find /usr/lib/dsp
 
 # Remove cached files

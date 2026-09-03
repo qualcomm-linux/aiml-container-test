@@ -35,3 +35,13 @@ jobs:
               -i '{}' \;
 
           ci/schemacheck.py ci/lava/
+          python3 - <<'PY'
+          from pathlib import Path
+
+          import yaml
+          from lava_common.schemas.test import testdef
+
+          path = Path("ci/test-definitions/aiml-container-smoke.yaml")
+          testdef.validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+          print(f"{path} is valid")
+          PY

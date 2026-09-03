@@ -7,6 +7,34 @@ on:
         description: Immutable qcom-deb-images artifact prefix
         required: true
         type: string
+      container_digest:
+        description: Content digest of the tested container image
+        required: true
+        type: string
+      qcom_event:
+        description: qcom-deb-images workflow event
+        required: true
+        type: string
+      qcom_ref:
+        description: qcom-deb-images branch
+        required: true
+        type: string
+      qcom_run_attempt:
+        description: qcom-deb-images workflow run attempt
+        required: true
+        type: string
+      qcom_run_id:
+        description: qcom-deb-images workflow run ID
+        required: true
+        type: string
+      qcom_sha:
+        description: qcom-deb-images commit
+        required: true
+        type: string
+      qcom_workflow:
+        description: qcom-deb-images workflow path
+        required: true
+        type: string
       suite:
         description: Debian suite used for the LAVA image
         required: true
@@ -191,12 +219,19 @@ jobs:
     if: always() && needs.submit-job.result != 'skipped'
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       checks: write
       contents: read
       packages: read
       pull-requests: write
 
     steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
       - name: Download test results
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -213,6 +248,129 @@ jobs:
         run: |
           echo $GITHUB_WORKSPACE
           ls -R $GITHUB_WORKSPACE
+
+      - name: Download LAVA measurements and logs
+        id: lava_data
+        env:
+          LAVA_TOKEN: ${{ secrets.LAVATOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p report-input
+          job_count=0
+          while IFS= read -r -d '' json_file; do
+            job_id=$(jq -er '.id' "$json_file")
+            [[ "$job_id" =~ ^[0-9]+$ ]]
+            curl_args=(
+              --fail
+              --silent
+              --show-error
+              --retry 3
+              --header "Authorization: Token ${LAVA_TOKEN}"
+            )
+            curl "${curl_args[@]}" \
+              "https://lava.infra.foundries.io/api/v0.2/jobs/${job_id}/" \
+              --output "report-input/job-${job_id}.json"
+            curl "${curl_args[@]}" \
+              "https://lava.infra.foundries.io/api/v0.2/jobs/${job_id}/csv/" \
+              --output "report-input/job-${job_id}-tests.csv"
+            curl "${curl_args[@]}" \
+              "https://lava.infra.foundries.io/api/v0.2/jobs/${job_id}/logs/" \
+              --output "report-input/job-${job_id}.yaml"
+            job_count=$((job_count + 1))
+          done < <(find artifacts -type f -name '*test-job-*.json' -print0)
+          (( job_count > 0 ))
+          board_key=$(
+            jq -r --slurpfile metadata ci/boards.json '
+              .requested_device_type as $device_type
+              | $metadata[0].boards
+              | to_entries[]
+              | select(.value.device_types | index($device_type))
+              | .key
+            ' report-input/job-*.json |
+              sort -u |
+              paste -sd+ -
+          )
+          [[ "$board_key" =~ ^[a-z0-9_-]+(\+[a-z0-9_-]+)*$ ]]
+          echo "board_key=$board_key" >>"$GITHUB_OUTPUT"
+
+      - name: Download previous performance report
+        env:
+          BOARD_KEY: ${{ steps.lava_data.outputs.board_key }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_name="tflite-performance-${SUITE}-${BOARD_KEY}"
+          ref_name="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          artifacts=$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+            -f name="$artifact_name" \
+            -f per_page=100)
+          artifact_id=$(jq -r \
+            --arg branch "$ref_name" \
+            --argjson run_id "$GITHUB_RUN_ID" '
+              [.artifacts[]
+                | select(.expired == false)
+                | select(.workflow_run.id != $run_id)
+                | select(.workflow_run.head_branch == $branch)]
+              | sort_by(.created_at)
+              | reverse
+              | .[0].id // empty
+            ' <<<"$artifacts")
+          if [[ -n "$artifact_id" ]]; then
+            mkdir -p previous-report
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+              >previous-report.zip
+            unzip -q previous-report.zip -d previous-report
+          else
+            echo "No previous performance report found for ${ref_name}"
+          fi
+
+      - name: Generate performance report
+        env:
+          AIML_REF: ${{ github.head_ref || github.ref_name }}
+          CONTAINER_DIGEST: ${{ inputs.container_digest }}
+          QCOM_EVENT: ${{ inputs.qcom_event }}
+          QCOM_REF: ${{ inputs.qcom_ref }}
+          QCOM_RUN_ATTEMPT: ${{ inputs.qcom_run_attempt }}
+          QCOM_RUN_ID: ${{ inputs.qcom_run_id }}
+          QCOM_SHA: ${{ inputs.qcom_sha }}
+          QCOM_WORKFLOW: ${{ inputs.qcom_workflow }}
+        run: |
+          set -euo pipefail
+          previous_args=()
+          if [[ -s previous-report/results.json ]]; then
+            previous_args+=(--previous-results previous-report/results.json)
+          fi
+          python3 ci/report_lava_results.py \
+            --input-dir report-input \
+            --output-dir performance-results \
+            --boards ci/boards.json \
+            --suite "$SUITE" \
+            --lava-url https://lava.infra.foundries.io \
+            --qcom-run-id "$QCOM_RUN_ID" \
+            --qcom-run-attempt "$QCOM_RUN_ATTEMPT" \
+            --qcom-workflow "$QCOM_WORKFLOW" \
+            --qcom-event "$QCOM_EVENT" \
+            --qcom-ref "$QCOM_REF" \
+            --qcom-sha "$QCOM_SHA" \
+            --aiml-repository "$GITHUB_REPOSITORY" \
+            --aiml-ref "$AIML_REF" \
+            --aiml-sha "$GITHUB_SHA" \
+            --aiml-run-id "$GITHUB_RUN_ID" \
+            --aiml-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --container-digest "$CONTAINER_DIGEST" \
+            "${previous_args[@]}"
+          cat performance-results/summary.md >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload performance report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tflite-performance-${{ inputs.suite }}-${{ steps.lava_data.outputs.board_key }}
+          path: performance-results
+          retention-days: 90
+          if-no-files-found: error
+          overwrite: true
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0

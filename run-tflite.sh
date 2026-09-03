@@ -8,6 +8,7 @@ MODEL_DIR=${MODEL_DIR:-/root/models}
 THREADS=${THREADS:-$(nproc)}
 TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-300}
 ENABLE_OP_PROFILING=${ENABLE_OP_PROFILING:-0}
+TEST_CONFIGURATION_VERSION=1
 
 LABEL_IMAGE_DIR=/root/tensorflow/lite/examples/label_image
 BENCHMARK_BIN=/root/tensorflow/lite/tools/benchmark/benchmark_model
@@ -49,6 +50,17 @@ has_cdsp=false
 if compgen -G '/dev/fastrpc-cdsp*' >/dev/null; then
 	has_cdsp=true
 fi
+
+qairt_version=$(</usr/share/aiml-container/qairt-version)
+tflite_commit=$(</root/tensorflow/TFLITE_COMMIT)
+printf \
+	'AIML_PROVENANCE qairt=%s tflite_commit=%s configuration_version=%s threads=%s timeout_seconds=%s op_profiling=%s\n' \
+	"$qairt_version" \
+	"$tflite_commit" \
+	"$TEST_CONFIGURATION_VERSION" \
+	"$THREADS" \
+	"$TIMEOUT_SECONDS" \
+	"$ENABLE_OP_PROFILING"
 
 sanitize_id()
 {
@@ -214,6 +226,10 @@ run_benchmark_model()
 
 cd "$LABEL_IMAGE_DIR"
 
+printf 'INPUT test_case_prefix=tflite-label-image sha256=%s path=%q\n' \
+	"$(sha256sum grace_hopper.bmp | awk '{ print $1 }')" \
+	"$LABEL_IMAGE_DIR/grace_hopper.bmp"
+
 run_case \
 	tflite-label-image-cpu \
 	label-image \
@@ -240,12 +256,19 @@ if [[ "$has_cdsp" == true ]]; then
 		--external_delegate_options=backend_type:htp
 fi
 
+declare -A model_ids=(["mobilenet-quant-v1-224"]=1)
 run_benchmark_model "$BUILTIN_MODEL" mobilenet-quant-v1-224
 
 if [[ -d "$MODEL_DIR" ]]; then
 	while IFS= read -r -d '' model; do
 		relative_path=${model#"$MODEL_DIR"/}
 		model_id=$(sanitize_id "$relative_path")
+		if [[ -n "${model_ids[$model_id]+set}" ]]; then
+			printf 'ERROR: duplicate model ID %s from %q\n' \
+				"$model_id" "$model" >&2
+			exit 1
+		fi
+		model_ids["$model_id"]=1
 		run_benchmark_model "$model" "$model_id"
 	done < <(find "$MODEL_DIR" -type f -name '*.tflite' -print0)
 else

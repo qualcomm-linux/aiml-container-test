@@ -76,4 +76,11 @@ jobs:
     with:
       build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
       boards_include: ${{ inputs.boards_include || '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]' }}
+      container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}
       suite: ${{ inputs.suite || 'trixie' }}

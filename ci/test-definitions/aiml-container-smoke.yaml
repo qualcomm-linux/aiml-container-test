@@ -9,6 +9,7 @@ run:
     bash -euo pipefail <<'EOF'
     test -s aiml-container.tar
     test -s qualcomm-cdi-generator.py
+    printf 'AIML_PROVENANCE kernel=%s\n' "$(uname -r)"
     # QDL starts tests before the asynchronous first-boot resize necessarily
     # finishes, and loading the image needs the expanded filesystem.
     systemctl start debos-grow-rootfs.service

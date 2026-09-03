@@ -19,6 +19,21 @@ on:
       run_id:
         description: Selected qcom-deb-images workflow run ID
         value: ${{ jobs.resolve.outputs.run_id }}
+      run_attempt:
+        description: Selected qcom-deb-images workflow run attempt
+        value: ${{ jobs.resolve.outputs.run_attempt }}
+      workflow:
+        description: Selected qcom-deb-images workflow path
+        value: ${{ jobs.resolve.outputs.workflow }}
+      event:
+        description: Selected qcom-deb-images workflow event
+        value: ${{ jobs.resolve.outputs.event }}
+      ref:
+        description: Selected qcom-deb-images branch
+        value: ${{ jobs.resolve.outputs.ref }}
+      sha:
+        description: Selected qcom-deb-images commit
+        value: ${{ jobs.resolve.outputs.sha }}
 
 permissions: {}
 
@@ -31,6 +46,11 @@ jobs:
     outputs:
       build_url: ${{ steps.resolve.outputs.build_url }}
       run_id: ${{ steps.resolve.outputs.run_id }}
+      run_attempt: ${{ steps.resolve.outputs.run_attempt }}
+      workflow: ${{ steps.resolve.outputs.workflow }}
+      event: ${{ steps.resolve.outputs.event }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - name: Resolve latest successful image build
         id: resolve
@@ -94,6 +114,12 @@ jobs:
           run_attempt=$(jq -er '.run_attempt' <<<"$run_json")
           created_at=$(jq -er '.created_at' <<<"$run_json")
           html_url=$(jq -er '.html_url' <<<"$run_json")
+          head_branch=$(jq -er '.head_branch' <<<"$run_json")
+          head_sha=$(jq -er '.head_sha' <<<"$run_json")
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Selected run has an invalid commit SHA"
+            exit 1
+          }
 
           jq -e \
             --arg repo "$repo" \
@@ -129,6 +155,11 @@ jobs:
           }
 
           echo "run_id=$run_id" >>"$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >>"$GITHUB_OUTPUT"
+          echo "workflow=$workflow_path" >>"$GITHUB_OUTPUT"
+          echo "event=$expected_event" >>"$GITHUB_OUTPUT"
+          echo "ref=$head_branch" >>"$GITHUB_OUTPUT"
+          echo "sha=$head_sha" >>"$GITHUB_OUTPUT"
           echo "build_url=$build_url" >>"$GITHUB_OUTPUT"
           {
             echo "## qcom-deb-images input"
