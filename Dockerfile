@@ -131,6 +131,10 @@ RUN mkdir -p /root/models
 
 FROM debian:trixie-slim AS deploy
 
+# Rusticl leaves drivers disabled by default, so explicitly expose Freedreno to
+# OpenCL consumers instead of letting GPU workloads fail with no devices.
+ENV RUSTICL_ENABLE=freedreno
+
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
