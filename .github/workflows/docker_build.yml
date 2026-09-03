@@ -79,6 +79,18 @@ jobs:
         mkdir -v "$repository"
         cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" "$repository/aiml-container.tar"
         cp -v ci/test-definitions/aiml-container-smoke.yaml "$repository/"
+        cdi_generator_commit=54c3cac049cee5afb1b983596d5dda6802b0d568
+        curl --fail --location --retry 3 \
+          --output "$repository/qualcomm-cdi-generator.py" \
+          "https://raw.githubusercontent.com/qualcomm-linux/qualcomm-CDI-generator/${cdi_generator_commit}/qualcomm-cdi-generator.py"
+        curl --fail --location --retry 3 \
+          --output "$repository/qualcomm-cdi-generator.LICENSE.txt" \
+          "https://raw.githubusercontent.com/qualcomm-linux/qualcomm-CDI-generator/${cdi_generator_commit}/LICENSE.txt"
+        printf '%s  %s\n' \
+          db3c538504e6a156838734ac7ada11a7d99ff65af35705830f8a66deb34c2d46 "$repository/qualcomm-cdi-generator.py" \
+          44c38c8e8170268d5c1469c359f46b0a4e11a53f7d68b5a561030c9044b1bb0d "$repository/qualcomm-cdi-generator.LICENSE.txt" |
+          sha256sum --check --strict
+        chmod 0755 "$repository/qualcomm-cdi-generator.py"
         tar -C "$repository" -cf - . |
           gzip -1 >OCI-artifacts/aiml-container-test-repository.tar.gz
         test -s OCI-artifacts/aiml-container-test-repository.tar.gz

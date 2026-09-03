@@ -6,19 +6,63 @@ run:
   - |
     bash -euo pipefail <<'EOF'
     test -s aiml-container.tar
+    test -s qualcomm-cdi-generator.py
     # QDL starts tests before the asynchronous first-boot resize necessarily
     # finishes, and loading the image needs the expanded filesystem.
     systemctl start debos-grow-rootfs.service
     df -h /
-    systemctl is-active --quiet docker || systemctl start docker
+    # Docker 26 supports CDI but requires explicit daemon configuration.
+    install -d -m 0755 /etc/docker
+    python3 - <<'PY'
+    import json
+    from pathlib import Path
+
+    path = Path("/etc/docker/daemon.json")
+    config = {}
+    if path.exists():
+        with path.open(encoding="utf-8") as source:
+            config = json.load(source)
+
+    features = config.setdefault("features", {})
+    if not isinstance(features, dict):
+        raise TypeError("Docker daemon features must be an object")
+    features["cdi"] = True
+    config["cdi-spec-dirs"] = ["/etc/cdi", "/run/cdi"]
+
+    temporary = path.with_suffix(".json.tmp")
+    with temporary.open("w", encoding="utf-8") as destination:
+        json.dump(config, destination, indent=2, sort_keys=True)
+        destination.write("\n")
+    temporary.chmod(0o644)
+    temporary.replace(path)
+    PY
+    if systemctl is-active --quiet docker; then
+      systemctl restart docker
+    else
+      systemctl start docker
+    fi
     load_output=$(docker load -i aiml-container.tar)
     rm -f aiml-container.tar
     printf '%s\n' "$load_output"
     image=$(sed -n 's/^Loaded image: //p' <<<"$load_output" | tail -n1)
     test -n "$image"
+    if compgen -G '/dev/fastrpc-cdsp*' >/dev/null; then
+      # Prove the selected qcom-deb image can open an unsigned CDSP process
+      # before attributing a lower-level firmware failure to the container.
+      command -v fastrpc_test
+      fastrpc_test -d 3 -U 1 -t linux -a v68
+    fi
+    python3 ./qualcomm-cdi-generator.py --classes gpu,dmaheap,fastrpc-cdsp --verbose
+    docker info
     device_args=()
     if compgen -G '/dev/dri/renderD*' >/dev/null; then
-      device_args+=(--device /dev/dri)
+      device_args+=(--device=qualcomm.com/gpu=renderD:all)
+    fi
+    if compgen -G '/dev/dma_heap/*system' >/dev/null; then
+      device_args+=(--device=qualcomm.com/dmaheap=dmaheap-system:all)
+    fi
+    if compgen -G '/dev/fastrpc-cdsp*' >/dev/null; then
+      device_args+=(--device=qualcomm.com/fastrpc-cdsp=fastrpc-cdsp:all)
     fi
     docker run --rm --network host "${device_args[@]}" --entrypoint /bin/bash "$image" -lc '[ -e /dev/card ] || ln -s /dev/dri /dev/card; /run-tflite.sh'
     EOF
