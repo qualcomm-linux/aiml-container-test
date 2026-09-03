@@ -189,29 +189,42 @@ ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 
 FROM deploy AS fastrpc-deploy
 
-# Add repo containing fastrpc, dsp binaries and tflite
-COPY <<EOF /etc/apt/sources.list.d/debusine.sources
-Types: deb deb-src
-URIs: https://deb.debusine.debian.net/debian/r-rbasak-qcom-hexagon-stack-2
-Suites: sid
-Components: main non-free-firmware
+# FastRPC's domain-neutral override reaches the QNN skeletons kept in their
+# CDSP-specific subdirectory without relying on its legacy ADSP-named alias.
+ENV DSP_LIBRARY_PATH=/usr/lib/dsp/cdsp
+
+# CDI supplies MACHINE_NAME and mounts the matching host DSP directory; this
+# mapping lets FastRPC select that directory without another runtime bind.
+COPY <<EOF /usr/share/hexagon-dsp/conf.d/aiml-container-rb3gen2.yaml
+machines:
+  Qualcomm Technologies, Inc. Robotics RB3gen2:
+    DSP_LIBRARY_PATH: qcm6490/Thundercomm/RB3gen2/dsp
+EOF
+
+# Use the same maintained FastRPC packages as the qcom-deb host image so the
+# container userspace stays compatible with its kernel and CDSP firmware.
+COPY <<EOF /etc/apt/sources.list.d/qli.sources
+Types: deb
+URIs: https://deb.debusine.qualcomm.com/qualcomm/qli
+Suites: trixie
+Components: main contrib non-free-firmware non-free
+Enabled: yes
 Signed-By:
  -----BEGIN PGP PUBLIC KEY BLOCK-----
  .
- mDMEaWpOVhYJKwYBBAHaRw8BAQdA6gdtyg0BKTS9EA9CAbbY3gk7bOYKY74Clfak
- 3FjWn220PEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIGRlYmlhbi9yLXJiYXNhay1x
- Y29tLWhleGFnb24tc3RhY2stMoiQBBMWCgA4FiEEWi95OlWxjLyNwWscPETQboDo
- XeEFAmlqTlYCGwMFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AACgkQPETQboDoXeFL
- AQD+Pm5ERzQPJRdxcqekaUVbqKrbyo1i7NPztV0j0YnyDFUA/24Ms1ZS8eV1um+R
- pqm6Uf5gvyZjJrjMGZWx/hqvriED
- =P90u
+ mDMEag8p/xYJKwYBBAHaRw8BAQdAdB6JSNF1OXxnsTgp4VTUekW52BM7e6ZQVRsq
+ QT5QDaS0JEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIHF1YWxjb21tL3FsaYiQBBMW
+ CgA4FiEEOwuFfyf8aPE5SQakb8qSvoHfw8IFAmoPKf8CGwMFCwkIBwIGFQoJCAsC
+ BBYCAwECHgECF4AACgkQb8qSvoHfw8Lz1gEA9XocADbvqUgZQc0LceThn7vMI98d
+ kTJoiInuulQ6rEUBANo+GOKILH71VRnZ5jWtsu7IlVk7oUMlTtC0eE5tcBwB
+ =bX6V
  -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
-# Install libyaml, fastrpc depends on it. Once we use proper debian packages, this workaround can go away
+# Install the FastRPC userspace and its executable CDSP diagnostics.
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
 # Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
