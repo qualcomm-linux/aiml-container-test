@@ -34,37 +34,10 @@ Additional `.tflite` models mounted under `/root/models` are benchmarked
 recursively. The model directory can remain read-only because benchmark results
 are emitted on standard output instead of being written next to the models.
 
-## CI performance results
+## Performance tracking
 
-LAVA records each TensorFlow Lite latency as a native measurement. The workflow
-summary renders one Mermaid graph per board, with every measured test shown as
-an adjacent bar and an exact-value table below it. Missing accelerators remain
-absent rather than being plotted as zero.
-
-Each run uploads a `tflite-performance-<suite>-<boards>` artifact containing
-`results.json`, `results.csv`, `raw-logs/`, and `summary.md`. Keying the artifact
-by its exact board set keeps targeted runs from displacing another board's
-baseline. The report includes the qcom-deb-images input, kernel, TensorFlow Lite
-revision, QAIRT version, container digest, AIML commit, and LAVA job/device.
-Measurements with matching model and input content from the previous report on
-the same branch are shown as informational changes. Environment and test
-configuration changes are listed alongside the comparison.
-
-Daily and push builds resolve qcom-deb-images through the producer's
-`build_url` pointer artifact. The pointer is authoritative across producer
-reruns: its publication attempt can differ from the GitHub workflow
-`run_attempt`. Resolution checks live duplicate pointers newest-first, validates
-the trusted repository URL, and confirms that the requested
-`<suite>-flash-emmc.tar.gz` exists before submitting a LAVA job. A manually
-supplied producer run ID is validated without falling back to another run.
-
-If a LAVA job finishes without running the AIML TensorFlow Lite cases, CI retries
-that board once. A second non-execution fails the workflow and is reported
-explicitly instead of producing an empty performance table.
-
-The production Daily Build runs only from the repository's default branch. For
-manual runs, leave the workflow ref unset so GitHub selects the latest default
-branch revision. Selecting another ref fails before container or LAVA jobs run.
+CI tracks TensorFlow Lite latency per board in LAVA. Measurements and comparisons
+are published with each [Daily LAVA workflow][daily] run.
 
 ## License
 
