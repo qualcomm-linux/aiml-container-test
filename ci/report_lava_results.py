@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument("--lava-url", required=True)
     parser.add_argument("--qcom-run-id", required=True)
     parser.add_argument("--qcom-run-attempt", required=True)
+    parser.add_argument("--qcom-publication-attempt", required=True)
     parser.add_argument("--qcom-workflow", required=True)
     parser.add_argument("--qcom-event", required=True)
     parser.add_argument("--qcom-ref", required=True)
@@ -489,7 +490,9 @@ def provenance_table(lines, boards, provenance):
         qcom_link = (
             f"[`{qcom['ref']}@{qcom['sha'][:12]}`]({qcom_commit_url}) "
             f"via [`{qcom['workflow']}` ({qcom['event']}) "
-            f"run {qcom['run_id']}]({qcom_run_url})"
+            f"run {qcom['run_id']}, workflow attempt {qcom['run_attempt']}]"
+            f"({qcom_run_url}); publication attempt "
+            f"{qcom['publication_attempt']}"
         )
         aiml_link = (
             f"[`{aiml['ref']}@{aiml['sha'][:12]}`]({aiml_commit_url}) "
@@ -663,6 +666,7 @@ def main():
             "sha": args.qcom_sha,
             "run_id": int(args.qcom_run_id),
             "run_attempt": int(args.qcom_run_attempt),
+            "publication_attempt": int(args.qcom_publication_attempt),
         },
         "aiml_container": {
             "repository": args.aiml_repository,

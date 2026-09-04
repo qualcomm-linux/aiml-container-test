@@ -49,6 +49,7 @@ jobs:
     with:
       run_id: ${{ inputs.qcom_build_run_id }}
       source: ${{ inputs.image_source || 'generic' }}
+      suite: ${{ inputs.suite || 'trixie' }}
 
   build-daily:
     name: Build AIML container
@@ -79,6 +80,7 @@ jobs:
       qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
       qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
       qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
+      qcom_publication_attempt: ${{ needs.resolve-qcom-image.outputs.publication_attempt }}
       qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
       qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
       qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}

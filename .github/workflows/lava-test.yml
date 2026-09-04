@@ -23,6 +23,10 @@ on:
         description: qcom-deb-images workflow run attempt
         required: true
         type: string
+      qcom_publication_attempt:
+        description: qcom-deb-images artifact publication attempt
+        required: true
+        type: string
       qcom_run_id:
         description: qcom-deb-images workflow run ID
         required: true
@@ -410,6 +414,7 @@ jobs:
           QCOM_EVENT: ${{ inputs.qcom_event }}
           QCOM_REF: ${{ inputs.qcom_ref }}
           QCOM_RUN_ATTEMPT: ${{ inputs.qcom_run_attempt }}
+          QCOM_PUBLICATION_ATTEMPT: ${{ inputs.qcom_publication_attempt }}
           QCOM_RUN_ID: ${{ inputs.qcom_run_id }}
           QCOM_SHA: ${{ inputs.qcom_sha }}
           QCOM_WORKFLOW: ${{ inputs.qcom_workflow }}
@@ -427,6 +432,7 @@ jobs:
             --lava-url https://lava.infra.foundries.io \
             --qcom-run-id "$QCOM_RUN_ID" \
             --qcom-run-attempt "$QCOM_RUN_ATTEMPT" \
+            --qcom-publication-attempt "$QCOM_PUBLICATION_ATTEMPT" \
             --qcom-workflow "$QCOM_WORKFLOW" \
             --qcom-event "$QCOM_EVENT" \
             --qcom-ref "$QCOM_REF" \
