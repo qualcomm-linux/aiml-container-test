@@ -162,10 +162,9 @@ jobs:
           echo "sha=$head_sha" >>"$GITHUB_OUTPUT"
           echo "build_url=$build_url" >>"$GITHUB_OUTPUT"
           {
-            echo "## qcom-deb-images input"
-            echo
-            echo "- Image source: \`$SOURCE\`"
-            echo "- Run: [$run_id attempt $run_attempt]($html_url)"
-            echo "- Created: $created_at (${age_hours} hours old)"
-            echo "- Artifact prefix: \`$build_url\`"
-          } >>"$GITHUB_STEP_SUMMARY"
+            echo "qcom-deb-images input:"
+            echo "  Image source: $SOURCE"
+            echo "  Run: $run_id attempt $run_attempt ($html_url)"
+            echo "  Created: $created_at (${age_hours} hours old)"
+            echo "  Artifact prefix: $build_url"
+          }
