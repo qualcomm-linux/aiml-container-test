@@ -50,6 +50,14 @@ Measurements with matching model and input content from the previous report on
 the same branch are shown as informational changes. Environment and test
 configuration changes are listed alongside the comparison.
 
+Daily and push builds resolve qcom-deb-images through the producer's
+`build_url` pointer artifact. The pointer is authoritative across producer
+reruns: its publication attempt can differ from the GitHub workflow
+`run_attempt`. Resolution checks live duplicate pointers newest-first, validates
+the trusted repository URL, and confirms that the requested
+`<suite>-flash-emmc.tar.gz` exists before submitting a LAVA job. A manually
+supplied producer run ID is validated without falling back to another run.
+
 If a LAVA job finishes without running the AIML TensorFlow Lite cases, CI retries
 that board once. A second non-execution fails the workflow and is reported
 explicitly instead of producing an empty performance table.

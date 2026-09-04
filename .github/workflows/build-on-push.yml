@@ -13,6 +13,7 @@ jobs:
       contents: read
     with:
       source: generic
+      suite: trixie
 
   resolve-qcom-image-arduino:
     uses: ./.github/workflows/resolve-qcom-image.yml
@@ -20,6 +21,7 @@ jobs:
       contents: read
     with:
       source: arduino
+      suite: trixie
 
   build-daily:
     uses: ./.github/workflows/docker_build.yml
@@ -50,6 +52,7 @@ jobs:
       qcom_event: ${{ needs.resolve-qcom-image-generic.outputs.event }}
       qcom_ref: ${{ needs.resolve-qcom-image-generic.outputs.ref }}
       qcom_run_attempt: ${{ needs.resolve-qcom-image-generic.outputs.run_attempt }}
+      qcom_publication_attempt: ${{ needs.resolve-qcom-image-generic.outputs.publication_attempt }}
       qcom_run_id: ${{ needs.resolve-qcom-image-generic.outputs.run_id }}
       qcom_sha: ${{ needs.resolve-qcom-image-generic.outputs.sha }}
       qcom_workflow: ${{ needs.resolve-qcom-image-generic.outputs.workflow }}
@@ -73,6 +76,7 @@ jobs:
       qcom_event: ${{ needs.resolve-qcom-image-arduino.outputs.event }}
       qcom_ref: ${{ needs.resolve-qcom-image-arduino.outputs.ref }}
       qcom_run_attempt: ${{ needs.resolve-qcom-image-arduino.outputs.run_attempt }}
+      qcom_publication_attempt: ${{ needs.resolve-qcom-image-arduino.outputs.publication_attempt }}
       qcom_run_id: ${{ needs.resolve-qcom-image-arduino.outputs.run_id }}
       qcom_sha: ${{ needs.resolve-qcom-image-arduino.outputs.sha }}
       qcom_workflow: ${{ needs.resolve-qcom-image-arduino.outputs.workflow }}

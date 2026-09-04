@@ -122,6 +122,8 @@ class ReportLavaResultsTest(unittest.TestCase):
         self.assertIn("bar [30.5, 100.25]", summary)
         self.assertNotIn("bar [30.5, 0", summary)
         self.assertIn("`main@cccccccccccc`", summary)
+        self.assertIn("workflow attempt 2", summary)
+        self.assertIn("publication attempt 1", summary)
         self.assertIn("`7.2.0-test`", summary)
         self.assertIn("| GPU | fail | N/A |", summary)
 
@@ -277,6 +279,8 @@ class ReportLavaResultsTest(unittest.TestCase):
                 "--qcom-run-id",
                 "10",
                 "--qcom-run-attempt",
+                "2",
+                "--qcom-publication-attempt",
                 "1",
                 "--qcom-workflow",
                 ".github/workflows/build.yml",
@@ -311,6 +315,8 @@ class ReportLavaResultsTest(unittest.TestCase):
                 "ref": "main",
                 "sha": "c" * 40,
                 "run_id": 10,
+                "run_attempt": 2,
+                "publication_attempt": 1,
             },
             "aiml_container": {
                 "repository": "qualcomm-linux/aiml-container-test",
