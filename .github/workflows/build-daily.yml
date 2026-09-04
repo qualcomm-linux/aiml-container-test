@@ -70,7 +70,6 @@ jobs:
       checks: write
       contents: read
       packages: read
-      pull-requests: write
     secrets:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
@@ -83,4 +82,5 @@ jobs:
       qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
       qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
       qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}
+      report_scope: ${{ inputs.image_source || 'generic' }}
       suite: ${{ inputs.suite || 'trixie' }}

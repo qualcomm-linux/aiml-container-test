@@ -39,6 +39,10 @@ on:
         description: Debian suite used for the LAVA image
         required: true
         type: string
+      report_scope:
+        description: Unique report and artifact namespace
+        required: true
+        type: string
       boards_include:
         description: JSON array of board names to include; empty selects all boards
         required: false
@@ -55,6 +59,7 @@ env:
   BOARDS_INCLUDE: ${{ inputs.boards_include }}
   BUILD_URL: ${{ inputs.build_url }}
   LAVA_CI: ci/lava/
+  REPORT_SCOPE: ${{ inputs.report_scope }}
   SUITE: ${{ inputs.suite }}
 
 jobs:
@@ -78,6 +83,7 @@ jobs:
       - name: "List jobs"
         id: listjobs
         run: |
+          [[ "$REPORT_SCOPE" =~ ^[a-z0-9-]+$ ]]
           # json with display names and relative filenames to LAVA templates
           J=$(find "${LAVA_CI}" -name '*.yaml' -print0 |
                   jq --compact-output --raw-input --slurp \
@@ -210,8 +216,8 @@ jobs:
           fail_action_on_incomplete: true
           save_result_as_artifact: true
           save_job_details: true
-          result_file_name: test-results-${{ inputs.suite }}-${{ matrix.slug }}
-          test_job_file_name_prefix: ${{ inputs.suite }}-${{ github.run_attempt }}-
+          result_file_name: test-results-${{ inputs.suite }}-${{ inputs.report_scope }}-${{ matrix.slug }}
+          test_job_file_name_prefix: ${{ inputs.suite }}-${{ github.run_attempt }}-${{ inputs.report_scope }}-
 
   publish-test-results:
     name: Publish Tests Results
@@ -223,7 +229,6 @@ jobs:
       checks: write
       contents: read
       packages: read
-      pull-requests: write
 
     steps:
       - name: Clone repository
@@ -236,13 +241,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
-          pattern: test-results-${{ inputs.suite }}-*
+          pattern: test-results-${{ inputs.suite }}-${{ inputs.report_scope }}-*
 
       - name: Download job details
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
-          pattern: ${{ inputs.suite }}-${{ github.run_attempt }}-test-job-*
+          pattern: ${{ inputs.suite }}-${{ github.run_attempt }}-${{ inputs.report_scope }}-test-job-*
 
       - name: List files
         run: |
@@ -299,7 +304,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          artifact_name="tflite-performance-${SUITE}-${BOARD_KEY}"
+          artifact_name="tflite-performance-${SUITE}-${REPORT_SCOPE}-${BOARD_KEY}"
           ref_name="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           artifacts=$(gh api --method GET \
             "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
@@ -363,19 +368,60 @@ jobs:
             "${previous_args[@]}"
           cat performance-results/summary.md >>"$GITHUB_STEP_SUMMARY"
 
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
+        with:
+          check_name: LAVA results (${{ inputs.report_scope }})
+          comment_mode: 'off'
+          compare_to_earlier_commit: 'false'
+          files: "${{ github.workspace }}/artifacts/**/*.xml"
+          job_summary: 'false'
+          json_file: performance-results/test-results.json
+
+      - name: Format Test Results
+        run: |
+          python3 ci/format_test_results.py \
+            --performance-summary performance-results/summary.md \
+            --test-results performance-results/test-results.json \
+            --output performance-results/check-summary.md
+
+      - name: Update Test Results check
+        env:
+          CHECK_NAME: LAVA results (${{ inputs.report_scope }})
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          check_runs=$(
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" \
+              -f check_name="$CHECK_NAME" \
+              -f filter=latest \
+              -f per_page=10
+          )
+          check_run_id=$(jq -er '.check_runs[0].id' <<<"$check_runs")
+          jq -e --rawfile summary performance-results/check-summary.md '
+            {
+              output: {
+                title: (
+                  .check_runs[0].output.title
+                  | select(type == "string" and length > 0)
+                ),
+                summary: $summary
+              }
+            }
+          ' <<<"$check_runs" >"${RUNNER_TEMP}/check-update.json"
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/check-runs/${check_run_id}" \
+            --input "${RUNNER_TEMP}/check-update.json"
+
       - name: Upload performance report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tflite-performance-${{ inputs.suite }}-${{ steps.lava_data.outputs.board_key }}
+          name: tflite-performance-${{ inputs.suite }}-${{ inputs.report_scope }}-${{ steps.lava_data.outputs.board_key }}
           path: performance-results
           retention-days: 90
           if-no-files-found: error
           overwrite: true
-
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
-        with:
-          files: "${{ github.workspace }}/artifacts/**/*.xml"
 
       - name: Publish Test Job Details
         run: |
