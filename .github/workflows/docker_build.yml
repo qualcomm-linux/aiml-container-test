@@ -64,6 +64,7 @@ jobs:
       uses: docker/build-push-action@v7
       env:
         DOCKER_BUILD_RECORD_UPLOAD: false
+        DOCKER_BUILD_SUMMARY: false
       with:
         push: false
         platforms: linux/arm64
@@ -115,6 +116,7 @@ jobs:
       uses: docker/build-push-action@v7
       env:
         DOCKER_BUILD_RECORD_UPLOAD: false
+        DOCKER_BUILD_SUMMARY: false
       with:
         push: false
         platforms: linux/arm64
@@ -209,5 +211,3 @@ jobs:
         echo "Downloads URL: ${build_url}"
         echo "url=\"${build_url}\"" >> $GITHUB_OUTPUT
         echo "${build_url}" > build_url
-        echo "## Download URL" >> $GITHUB_STEP_SUMMARY
-        echo "[${build_url}](${build_url})" >> $GITHUB_STEP_SUMMARY
