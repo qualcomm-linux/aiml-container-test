@@ -38,11 +38,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-ref:
+    name: Require default branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate production workflow ref
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "::error title=Unsupported workflow ref::Daily Build must run from the default branch ($DEFAULT_BRANCH), not $GITHUB_REF_NAME."
+            exit 1
+          fi
+
   resolve-qcom-image:
-    if: >-
-      github.repository == 'qualcomm-linux/aiml-container-test' &&
-      (github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main')
+    needs: validate-ref
+    if: github.repository == 'qualcomm-linux/aiml-container-test'
     uses: ./.github/workflows/resolve-qcom-image.yml
     permissions:
       contents: read

@@ -62,6 +62,10 @@ If a LAVA job finishes without running the AIML TensorFlow Lite cases, CI retrie
 that board once. A second non-execution fails the workflow and is reported
 explicitly instead of producing an empty performance table.
 
+The production Daily Build runs only from the repository's default branch. For
+manual runs, leave the workflow ref unset so GitHub selects the latest default
+branch revision. Selecting another ref fails before container or LAVA jobs run.
+
 ## License
 
 *AIML container test* is licensed under the [BSD-3-clause License](https://spdx.org/licenses/BSD-3-Clause.html). See [LICENSE](LICENSE) for the full license text.
