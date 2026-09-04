@@ -152,7 +152,7 @@ class ReportLavaResultsTest(unittest.TestCase):
             results["boards"][0]["test_configuration"]["op_profiling"]
         )
 
-    def test_compares_only_compatible_measurements(self):
+    def test_compares_matching_measurements_across_configuration_changes(self):
         boards = REPORT.load_jobs(
             self.input_dir,
             REPORT.load_board_map(self.boards_file),
@@ -165,7 +165,12 @@ class ReportLavaResultsTest(unittest.TestCase):
             "boards": [
                 {
                     "id": "test-board",
-                    "test_configuration": boards[0]["test_configuration"],
+                    "test_configuration": {
+                        "version": 0,
+                        "threads": 4,
+                        "timeout_seconds": 120,
+                        "op_profiling": False,
+                    },
                     "results": [
                         {
                             **boards[0]["results"][0],
@@ -186,6 +191,73 @@ class ReportLavaResultsTest(unittest.TestCase):
         self.assertEqual(boards[0]["results"][0]["previous_measurement"], 25.0)
         self.assertEqual(boards[0]["results"][0]["change_percent"], 22.0)
         self.assertIsNone(boards[0]["results"][2]["previous_measurement"])
+        self.assertEqual(
+            REPORT.test_configuration_changes(
+                boards[0], previous["boards"][0]
+            ),
+            [
+                "version: `0` -> `1`",
+                "threads: `4` -> `8`",
+                "timeout: `120 s` -> `300 s`",
+                "operator profiling: `disabled` -> `enabled`",
+            ],
+        )
+
+    def test_reports_when_aiml_tests_did_not_run(self):
+        with (self.input_dir / "job-42-tests.csv").open(
+            "w", newline="", encoding="utf-8"
+        ) as destination:
+            writer = csv.DictWriter(
+                destination,
+                fieldnames=["name", "suite", "result", "measurement", "unit"],
+            )
+            writer.writeheader()
+
+        self.run_report()
+
+        summary = (self.output_dir / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("**Tests did not run.**", summary)
+        self.assertNotIn("| N/A | N/A | N/A |", summary)
+
+    def test_uses_only_latest_lava_retry_results(self):
+        (self.input_dir / "job-41.json").write_text(
+            json.dumps(
+                {
+                    "id": 41,
+                    "requested_device_type": "test-device",
+                    "actual_device": "test-device-old",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.input_dir / "job-41.yaml").write_text("", encoding="utf-8")
+        with (self.input_dir / "job-41-tests.csv").open(
+            "w", newline="", encoding="utf-8"
+        ) as destination:
+            writer = csv.DictWriter(
+                destination,
+                fieldnames=["name", "suite", "result", "measurement", "unit"],
+            )
+            writer.writeheader()
+            writer.writerow(
+                {
+                    "name": "tflite-label-image-cpu",
+                    "suite": "2_aiml-container-smoke",
+                    "result": "pass",
+                    "measurement": "999",
+                    "unit": "ms",
+                }
+            )
+
+        boards = REPORT.load_jobs(
+            self.input_dir,
+            REPORT.load_board_map(self.boards_file),
+            "https://lava.example.com",
+        )
+
+        self.assertEqual([job["id"] for job in boards[0]["lava_jobs"]], [41, 42])
+        self.assertEqual(boards[0]["actual_device"], "test-device-01")
+        self.assertEqual(boards[0]["results"][0]["measurement"], 30.5)
 
     def run_report(self):
         subprocess.run(

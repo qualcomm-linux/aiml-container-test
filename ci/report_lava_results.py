@@ -197,21 +197,31 @@ def load_jobs(input_dir, board_map, lava_url):
     if not job_files:
         raise ValueError(f"no LAVA job details found in {input_dir}")
 
+    jobs = []
     for job_file in job_files:
         job = json.loads(job_file.read_text(encoding="utf-8"))
         job_id = str(job["id"])
         device_type = job["requested_device_type"]
         if device_type not in board_map:
             raise ValueError(f"no board metadata for LAVA device type {device_type}")
+        jobs.append((int(job_id), job, board_map[device_type]))
 
-        board_metadata = board_map[device_type]
+    latest_job_ids = {}
+    for job_id, _, board_metadata in jobs:
+        latest_job_ids[board_metadata["id"]] = max(
+            job_id, latest_job_ids.get(board_metadata["id"], 0)
+        )
+
+    for numeric_job_id, job, board_metadata in sorted(jobs):
+        job_id = str(numeric_job_id)
+        device_type = job["requested_device_type"]
         board = boards.setdefault(
             board_metadata["id"],
             {
                 "id": board_metadata["id"],
                 "name": board_metadata["display_name"],
                 "device_type": device_type,
-                "actual_device": job.get("actual_device"),
+                "actual_device": None,
                 "kernel": None,
                 "qairt": None,
                 "tflite_commit": None,
@@ -226,8 +236,10 @@ def load_jobs(input_dir, board_map, lava_url):
                 "url": f"{lava_url.rstrip('/')}/scheduler/job/{job_id}",
             }
         )
-        if job.get("actual_device"):
-            board["actual_device"] = job["actual_device"]
+        if numeric_job_id != latest_job_ids[board_metadata["id"]]:
+            continue
+        board["device_type"] = device_type
+        board["actual_device"] = job.get("actual_device")
 
         log_file = input_dir / f"job-{job_id}.yaml"
         tests_file = input_dir / f"job-{job_id}-tests.csv"
@@ -311,8 +323,6 @@ def add_comparisons(boards, previous, suite):
         previous_board = previous_boards.get(board["id"])
         if previous_board is None:
             continue
-        if previous_board.get("test_configuration") != board["test_configuration"]:
-            continue
 
         previous_results = {
             result["test_case_id"]: result
@@ -392,6 +402,38 @@ def environment_changes(board, previous_board, provenance, previous_provenance):
         for name, old, new in values
         if old != new
     ]
+
+
+def test_configuration_changes(board, previous_board):
+    if previous_board is None:
+        return []
+
+    previous = previous_board.get("test_configuration", {})
+    current = board.get("test_configuration", {})
+    fields = [
+        ("version", "version", lambda value: str(value)),
+        ("threads", "threads", lambda value: str(value)),
+        (
+            "timeout_seconds",
+            "timeout",
+            lambda value: f"{value} s",
+        ),
+        (
+            "op_profiling",
+            "operator profiling",
+            lambda value: "enabled" if value else "disabled",
+        ),
+    ]
+    changes = []
+    for key, label, formatter in fields:
+        old = previous.get(key)
+        new = current.get(key)
+        if old == new:
+            continue
+        old_display = "N/A" if old is None else formatter(old)
+        new_display = "N/A" if new is None else formatter(new)
+        changes.append(f"{label}: `{old_display}` -> `{new_display}`")
+    return changes
 
 
 def write_csv(path, boards):
@@ -485,6 +527,16 @@ def write_summary(path, boards, provenance, previous, previous_boards):
 
     for board in boards:
         lines.extend([f"## {board['name']}", ""])
+        if not board["results"]:
+            lines.extend(
+                [
+                    "**Tests did not run.** No TensorFlow Lite test cases were "
+                    "recorded for this board.",
+                    "",
+                ]
+            )
+            continue
+
         measured = [
             result
             for result in board["results"]
@@ -554,8 +606,6 @@ def write_summary(path, boards, provenance, previous, previous_boards):
                 )
                 + " |"
             )
-        if not board["results"]:
-            lines.append("| N/A | N/A | N/A | N/A | N/A | N/A | N/A |")
         lines.append("")
 
         changes = environment_changes(
@@ -569,18 +619,11 @@ def write_summary(path, boards, provenance, previous, previous_boards):
             lines.extend(f"- {change}" for change in changes)
             lines.append("")
         previous_board = previous_boards.get(board["id"])
-        if (
-            previous_board
-            and previous_board.get("test_configuration")
-            != board["test_configuration"]
-        ):
-            lines.extend(
-                [
-                    "Previous measurements were not compared because the test "
-                    "configuration changed.",
-                    "",
-                ]
-            )
+        configuration_changes = test_configuration_changes(board, previous_board)
+        if configuration_changes:
+            lines.append("Test configuration changes since the previous report:")
+            lines.extend(f"- {change}" for change in configuration_changes)
+            lines.append("")
 
     provenance_table(lines, boards, provenance)
     path.write_text("\n".join(lines), encoding="utf-8")

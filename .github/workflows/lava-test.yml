@@ -205,6 +205,8 @@ jobs:
           echo "Prepared validated LAVA definition at $TEMPLATE"
 
       - name: Submit ${{ matrix.target }}
+        id: lava_attempt
+        continue-on-error: true
         timeout-minutes: 240
         uses: foundriesio/lava-action@3d40f621e0cd5acec50f557783b755f278ca892d # v13
         with:
@@ -218,6 +220,42 @@ jobs:
           save_job_details: true
           result_file_name: test-results-${{ inputs.suite }}-${{ inputs.report_scope }}-${{ matrix.slug }}
           test_job_file_name_prefix: ${{ inputs.suite }}-${{ github.run_attempt }}-${{ inputs.report_scope }}-
+
+      - name: Check whether AIML tests ran
+        id: first_execution
+        if: always()
+        continue-on-error: true
+        env:
+          RESULT_FILE: test-results-${{ inputs.suite }}-${{ inputs.report_scope }}-${{ matrix.slug }}.xml
+        run: python3 ci/check_lava_execution.py "$RESULT_FILE"
+
+      - name: Retry ${{ matrix.target }}
+        if: steps.first_execution.outcome == 'failure'
+        timeout-minutes: 240
+        uses: foundriesio/lava-action@3d40f621e0cd5acec50f557783b755f278ca892d # v13
+        with:
+          lava_token: ${{ secrets.LAVATOKEN }}
+          lava_url: 'lava.infra.foundries.io'
+          job_definition: ${{ env.LAVA_CI }}${{ matrix.target }}
+          wait_for_job: true
+          fail_action_on_failure: true
+          fail_action_on_incomplete: true
+          save_result_as_artifact: true
+          save_job_details: true
+          result_file_name: test-results-${{ inputs.suite }}-${{ inputs.report_scope }}-${{ matrix.slug }}
+          test_job_file_name_prefix: ${{ inputs.suite }}-${{ github.run_attempt }}-${{ inputs.report_scope }}-
+
+      - name: Preserve executed test failures
+        if: always() && steps.lava_attempt.outcome == 'failure' && steps.first_execution.outcome == 'success'
+        run: |
+          echo "AIML tests ran, but the LAVA job reported a test failure" >&2
+          exit 1
+
+      - name: Require AIML test execution
+        if: always()
+        env:
+          RESULT_FILE: test-results-${{ inputs.suite }}-${{ inputs.report_scope }}-${{ matrix.slug }}.xml
+        run: python3 ci/check_lava_execution.py "$RESULT_FILE"
 
   publish-test-results:
     name: Publish Tests Results
@@ -310,24 +348,58 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
             -f name="$artifact_name" \
             -f per_page=100)
-          artifact_id=$(jq -r \
+          mapfile -t candidates < <(jq -r \
             --arg branch "$ref_name" \
             --argjson run_id "$GITHUB_RUN_ID" '
               [.artifacts[]
                 | select(.expired == false)
-                | select(.workflow_run.id != $run_id)
+                | select(.workflow_run.id < $run_id)
                 | select(.workflow_run.head_branch == $branch)]
               | sort_by(.created_at)
               | reverse
-              | .[0].id // empty
+              | .[]
+              | [.id, .workflow_run.id]
+              | @tsv
             ' <<<"$artifacts")
-          if [[ -n "$artifact_id" ]]; then
-            mkdir -p previous-report
-            gh api \
+
+          selected_run_id=""
+          rm -rf previous-candidate previous-report previous-report.zip
+          for candidate in "${candidates[@]}"; do
+            read -r artifact_id run_id <<<"$candidate"
+            if ! gh api \
               "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
-              >previous-report.zip
-            unzip -q previous-report.zip -d previous-report
-          else
+              >previous-report.zip; then
+              echo "::warning::Could not download performance report from run ${run_id}"
+              rm -f previous-report.zip
+              continue
+            fi
+
+            mkdir previous-candidate
+            if ! unzip -q previous-report.zip -d previous-candidate; then
+              echo "::warning::Could not unpack performance report from run ${run_id}"
+              rm -rf previous-candidate previous-report.zip
+              continue
+            fi
+            if [[ -s previous-candidate/results.json ]] && jq -e '
+              (.boards | length) > 0
+              and all(
+                .boards[];
+                any(
+                  .results[];
+                  .result == "pass" and .measurement != null
+                )
+              )
+            ' previous-candidate/results.json >/dev/null; then
+              mv previous-candidate previous-report
+              selected_run_id="$run_id"
+              echo "Using previous performance report from run ${run_id}"
+              break
+            fi
+            echo "Skipping report from run ${run_id}: no complete board measurements"
+            rm -rf previous-candidate previous-report.zip
+          done
+
+          if [[ -z "$selected_run_id" ]]; then
             echo "No previous performance report found for ${ref_name}"
           fi
 

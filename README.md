@@ -46,8 +46,13 @@ Each run uploads a `tflite-performance-<suite>-<boards>` artifact containing
 by its exact board set keeps targeted runs from displacing another board's
 baseline. The report includes the qcom-deb-images input, kernel, TensorFlow Lite
 revision, QAIRT version, container digest, AIML commit, and LAVA job/device.
-Compatible measurements from the previous report on the same branch are shown
-as informational changes.
+Measurements with matching model and input content from the previous report on
+the same branch are shown as informational changes. Environment and test
+configuration changes are listed alongside the comparison.
+
+If a LAVA job finishes without running the AIML TensorFlow Lite cases, CI retries
+that board once. A second non-execution fails the workflow and is reported
+explicitly instead of producing an empty performance table.
 
 ## License
 
