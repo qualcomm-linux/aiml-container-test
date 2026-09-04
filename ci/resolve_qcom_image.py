@@ -13,7 +13,9 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 REPOSITORY = "qualcomm-linux/qcom-deb-images"
 ARTIFACT_HOST = "qli-prod-artifacts.qualcomm.com"
@@ -48,29 +50,67 @@ class Resolution:
     age_hours: int
 
 
-class GitHubClient:
-    def get_json(self, endpoint, fields=None):
-        command = ["gh", "api", "--method", "GET", endpoint]
-        for key, value in (fields or {}).items():
-            command.extend(["-f", f"{key}={value}"])
-        result = subprocess.run(
-            command,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+class AuthStrippingRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        redirected = super().redirect_request(
+            request, file_pointer, code, message, headers, new_url
         )
-        return json.loads(result.stdout)
+        if (
+            redirected is not None
+            and urlsplit(request.full_url).hostname
+            != urlsplit(redirected.full_url).hostname
+        ):
+            redirected.remove_header("Authorization")
+        return redirected
+
+
+class GitHubClient:
+    def __init__(self, token=None):
+        self.token = token or os.environ.get("GH_TOKEN")
+        if not self.token:
+            raise ResolutionError("GH_TOKEN is required")
+        self.opener = build_opener(AuthStrippingRedirectHandler())
+
+    def request(self, endpoint, fields=None):
+        query = f"?{urlencode(fields)}" if fields else ""
+        request = Request(
+            f"https://api.github.com/{endpoint}{query}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.token}",
+                "User-Agent": "aiml-container-test-qcom-image-resolver",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            return self.opener.open(request, timeout=60)
+        except (HTTPError, URLError) as error:
+            status = getattr(error, "code", "network error")
+            raise ResolutionError(
+                f"GitHub API request failed for {endpoint} ({status})"
+            ) from error
+
+    def get_json(self, endpoint, fields=None):
+        with self.request(endpoint, fields) as response:
+            try:
+                return json.load(response)
+            except json.JSONDecodeError as error:
+                raise ResolutionError(
+                    f"GitHub API returned invalid JSON for {endpoint}"
+                ) from error
 
     def download_artifact(self, artifact_id):
         endpoint = f"repos/{REPOSITORY}/actions/artifacts/{artifact_id}/zip"
-        result = subprocess.run(
-            ["gh", "api", endpoint],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        return result.stdout
+        with self.request(endpoint) as response:
+            host = urlsplit(response.geturl()).hostname
+            if host is None or not host.endswith(".blob.core.windows.net"):
+                raise ResolutionError(
+                    f"artifact {artifact_id} download redirected to an invalid host"
+                )
+            archive = response.read(MAX_POINTER_ARCHIVE_SIZE + 1)
+        if len(archive) > MAX_POINTER_ARCHIVE_SIZE:
+            raise ResolutionError("pointer artifact archive is unexpectedly large")
+        return archive
 
 
 def parse_timestamp(value):
