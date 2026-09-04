@@ -36,7 +36,11 @@ class ComparePerformanceTest(unittest.TestCase):
             self.assertIn("30.5 ms", svg)
             self.assertIn("N/A", svg)
             self.assertIn(
-                "| Label image | CPU | 30.5 ms | 40 ms |", summary
+                "| Label image | CPU | **30.5 ms** | 40 ms |", summary
+            )
+            self.assertIn(
+                "**Bold** marks the lowest measured latency in each row.",
+                summary,
             )
             self.assertIn("`aabbccddeeff`", summary)
 

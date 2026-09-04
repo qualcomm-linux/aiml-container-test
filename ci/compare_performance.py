@@ -284,11 +284,19 @@ def write_summary(path, suite, container, boards):
     ]
     for workload, workload_name in WORKLOADS:
         for accelerator in ACCELERATORS:
-            values = " | ".join(
-                format_measurement(
-                    indexes[board["id"]].get((workload, accelerator))
-                )
+            measurements = [
+                indexes[board["id"]].get((workload, accelerator))
                 for board in boards
+            ]
+            measured = [value for value in measurements if value is not None]
+            best = min(measured) if measured else None
+            values = " | ".join(
+                (
+                    f"**{format_measurement(value)}**"
+                    if value is not None and value == best
+                    else format_measurement(value)
+                )
+                for value in measurements
             )
             lines.append(
                 f"| {workload_name} | {accelerator.upper()} | {values} |"
@@ -300,6 +308,8 @@ def write_summary(path, suite, container, boards):
                 f"Suite: `{suite}`. AIML container: "
                 f"`{container['sha'][:12]}` (`{container['digest']}`)."
             ),
+            "",
+            "**Bold** marks the lowest measured latency in each row.",
             "",
             "N/A means no valid millisecond measurement was recorded.",
             "",
