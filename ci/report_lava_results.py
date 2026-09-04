@@ -481,7 +481,6 @@ def write_summary(path, boards, provenance, previous, previous_boards):
         "Benchmark values are converted from microseconds to milliseconds.",
         "",
     ]
-    provenance_table(lines, boards, provenance)
     previous_provenance = previous.get("provenance", {}) if previous else {}
 
     for board in boards:
@@ -583,6 +582,7 @@ def write_summary(path, boards, provenance, previous, previous_boards):
                 ]
             )
 
+    provenance_table(lines, boards, provenance)
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
