@@ -75,6 +75,17 @@ class ReportLavaResultsTest(unittest.TestCase):
                 True,
             )
         )
+        messages.extend(
+            [
+                "LAVA_RESULT test_case_id=tflite-label-image-cpu "
+                "measurement=30.5 units=ms result=pass record_end=1",
+                "LAVA_RESULT test_case_id=tflite-label-image-gpu "
+                "result=fail record_end=1",
+                "LAVA_RESULT "
+                "test_case_id=tflite-benchmark-mobilenet-quant-v1-224-cpu "
+                "measurement=100.25 units=ms result=pass record_end=1",
+            ]
+        )
         (self.input_dir / "job-42.yaml").write_text(
             "\n".join(
                 f"- {json.dumps({'dt': '2026-09-03T12:00:00', 'lvl': 'target', 'msg': message})}"
@@ -415,11 +426,34 @@ class ReportLavaResultsTest(unittest.TestCase):
             )
             writer.writeheader()
 
-        self.run_report()
+        with self.assertRaisesRegex(
+            ValueError, "missing=.*tflite-label-image-cpu"
+        ):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
 
-        summary = (self.output_dir / "summary.md").read_text(encoding="utf-8")
-        self.assertIn("**Tests did not run.**", summary)
-        self.assertNotIn("| N/A | N/A | N/A |", summary)
+    def test_rejects_lava_api_omissions(self):
+        tests_path = self.input_dir / "job-42-tests.csv"
+        with tests_path.open(newline="", encoding="utf-8") as source:
+            reader = csv.DictReader(source)
+            rows = list(reader)
+            fieldnames = reader.fieldnames
+        with tests_path.open("w", newline="", encoding="utf-8") as destination:
+            writer = csv.DictWriter(destination, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows[1:])
+
+        with self.assertRaisesRegex(
+            ValueError, "missing=.*tflite-label-image-cpu"
+        ):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
 
     def test_uses_only_latest_lava_retry_results(self):
         (self.input_dir / "job-41.json").write_text(

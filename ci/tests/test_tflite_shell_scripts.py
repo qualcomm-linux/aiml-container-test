@@ -327,7 +327,7 @@ class TfliteShellScriptsTest(unittest.TestCase):
             self.result_lines(completed),
             [
                 "LAVA_RESULT test_case_id=tflite-label-image-cpu "
-                "measurement=5.500000000 units=ms result=pass"
+                "measurement=5.500000000 units=ms result=pass record_end=1"
             ],
         )
         self.assertEqual(len(self.sample_lines(completed)), 10)
@@ -389,7 +389,10 @@ class TfliteShellScriptsTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertEqual(
             self.result_lines(completed),
-            ["LAVA_RESULT test_case_id=tflite-label-image-cpu result=fail"],
+            [
+                "LAVA_RESULT test_case_id=tflite-label-image-cpu "
+                "result=fail record_end=1"
+            ],
         )
         self.assertEqual(len(self.sample_lines(completed)), 4)
         self.assertEqual(self.stats_lines(completed), [])
