@@ -22,6 +22,7 @@ class ComparePerformanceTest(unittest.TestCase):
             output_dir = root / "output"
             self.write_report(input_dir / "generic", "rb1", "RB1", 30.5)
             self.write_report(input_dir / "arduino", "ventuno", "VENTUNO Q", 40)
+            self.write_report(input_dir / "uno", "uno", "UNO Q", 35)
 
             suite, container, boards = COMPARE.load_reports(input_dir)
             output_dir.mkdir()
@@ -34,9 +35,10 @@ class ComparePerformanceTest(unittest.TestCase):
             summary = (output_dir / "summary.md").read_text(encoding="utf-8")
             self.assertIn("TensorFlow Lite latency by board", svg)
             self.assertIn("30.5 ms", svg)
+            self.assertIn("UNO Q", svg)
             self.assertIn("N/A", svg)
             self.assertIn(
-                "| Label image | CPU | **30.5 ms** | 40 ms |", summary
+                "| Label image | CPU | **30.5 ms** | 35 ms | 40 ms |", summary
             )
             self.assertIn(
                 "**Bold** marks the lowest measured latency in each row.",

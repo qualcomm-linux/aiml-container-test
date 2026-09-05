@@ -13,3 +13,8 @@ permissions:
 jobs:
   build-pr:
     uses: ./.github/workflows/docker_build.yml
+
+  schema-check:
+    uses: ./.github/workflows/lava-schema-check.yml
+    permissions:
+      contents: read

@@ -3,12 +3,14 @@
   "boards": {
     "qrb2210-rb1": {
       "display_name": "RB1",
+      "image_source": "generic",
       "device_types": [
         "qrb2210-rb1"
       ]
     },
     "qcs6490-rb3gen2-vision-kit": {
       "display_name": "RB3Gen2",
+      "image_source": "generic",
       "device_types": [
         "qcs6490-rb3gen2",
         "qcs6490-rb3gen2-vision-kit"
@@ -16,8 +18,16 @@
     },
     "monaco-arduino-monza": {
       "display_name": "Arduino VENTUNO Q",
+      "image_source": "arduino",
       "device_types": [
         "monaco-arduino-monza"
+      ]
+    },
+    "qrb2210-arduino-imola": {
+      "display_name": "Arduino UNO Q",
+      "image_source": "arduino",
+      "device_types": [
+        "qrb2210-arduino-imola"
       ]
     }
   }
