@@ -34,6 +34,11 @@ Additional `.tflite` models mounted under `/root/models` are benchmarked
 recursively. The model directory can remain read-only because benchmark results
 are emitted on standard output instead of being written next to the models.
 
+`./benchmark-tflite.sh` runs only the externally mounted models, on CPU and GPU,
+using the same validation, timeout, measurement, and result protocol as
+`run-tflite.sh`. It fails during preflight if the model directory or requested
+GPU device is unavailable.
+
 ## Performance tracking
 
 CI tracks TensorFlow Lite latency per board in LAVA. Measurements and comparisons
