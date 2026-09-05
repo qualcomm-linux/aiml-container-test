@@ -7,14 +7,25 @@ export LC_ALL=C
 
 MODEL_DIR=${MODEL_DIR:-/root/models}
 THREADS=${THREADS:-}
-TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-300}
+TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-360}
 ENABLE_OP_PROFILING=${ENABLE_OP_PROFILING:-0}
 ACCELERATORS=${ACCELERATORS:-auto}
 RUN_LABEL_IMAGE=${RUN_LABEL_IMAGE:-1}
 RUN_BUILTIN_MODEL=${RUN_BUILTIN_MODEL:-1}
 REQUIRE_MODEL_DIR=${REQUIRE_MODEL_DIR:-0}
 SETUP_COMPAT_LINKS=${SETUP_COMPAT_LINKS:-1}
-TEST_CONFIGURATION_VERSION=2
+BENCHMARK_WARMUP_RUNS=${BENCHMARK_WARMUP_RUNS:-10}
+BENCHMARK_WARMUP_MIN_SECS=${BENCHMARK_WARMUP_MIN_SECS:-1}
+BENCHMARK_NUM_RUNS=${BENCHMARK_NUM_RUNS:-100}
+BENCHMARK_MIN_SECS=${BENCHMARK_MIN_SECS:-3}
+BENCHMARK_MAX_SECS=${BENCHMARK_MAX_SECS:-150}
+LABEL_IMAGE_WARMUP_RUNS=${LABEL_IMAGE_WARMUP_RUNS:-10}
+LABEL_IMAGE_COUNT=${LABEL_IMAGE_COUNT:-100}
+OUTER_SAMPLE_COUNT=10
+TIMEOUT_HEADROOM_SECONDS=30
+TEST_CONFIGURATION_VERSION=3
+PROC_ROOT=${PROC_ROOT:-/proc}
+SYS_ROOT=${SYS_ROOT:-/sys}
 
 LABEL_IMAGE_DIR=${LABEL_IMAGE_DIR:-/root/tensorflow/lite/examples/label_image}
 LABEL_IMAGE_BIN=${LABEL_IMAGE_BIN:-"$LABEL_IMAGE_DIR/label_image"}
@@ -81,6 +92,29 @@ validate_positive_integer()
 
 	[[ "$value" =~ ^[1-9][0-9]*$ ]] ||
 		die "$name must be a positive integer, got: $value"
+}
+
+validate_nonnegative_number()
+{
+	local name=$1
+	local value=$2
+
+	if [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] &&
+		awk -v value="$value" \
+			'BEGIN { exit !(value == value && value >= 0 && value < 1e308) }'; then
+		return
+	fi
+	die "$name must be a finite non-negative number, got: $value"
+}
+
+validate_positive_number()
+{
+	local name=$1
+	local value=$2
+
+	validate_nonnegative_number "$name" "$value"
+	awk -v value="$value" 'BEGIN { exit !(value > 0) }' ||
+		die "$name must be greater than zero, got: $value"
 }
 
 validate_token()
@@ -196,6 +230,98 @@ validate_measurement()
 			'BEGIN { exit !(value == value && value >= 0 && value < 1e308) }'
 }
 
+join_array()
+{
+	local delimiter=$1
+	shift
+	local joined=
+	local value
+
+	for value in "$@"; do
+		if [[ -n "$joined" ]]; then
+			joined+=$delimiter
+		fi
+		joined+=$value
+	done
+	printf '%s' "$joined"
+}
+
+telemetry_value()
+{
+	local path=$1
+	local value
+
+	if [[ ! -r "$path" ]] || ! IFS= read -r value <"$path"; then
+		printf unavailable
+		return
+	fi
+	value=${value//[[:space:]]/_}
+	[[ -n "$value" ]] || value=unavailable
+	printf '%s' "$value"
+}
+
+emit_telemetry()
+{
+	local test_case_id=$1
+	local phase=$2
+	local cpu_online
+	local load=unavailable
+	local governor_entries=()
+	local current_entries=()
+	local frequency_entries=()
+	local thermal_entries=()
+	local policy
+	local policy_name
+	local minimum
+	local maximum
+	local zone
+	local zone_name
+	local zone_type
+	local zone_temp
+	local load_1
+	local load_5
+	local load_15
+	local _
+
+	cpu_online=$(telemetry_value "$SYS_ROOT/devices/system/cpu/online")
+	if [[ -r "$PROC_ROOT/loadavg" ]] &&
+		read -r load_1 load_5 load_15 _ <"$PROC_ROOT/loadavg"; then
+		load="${load_1},${load_5},${load_15}"
+	fi
+
+	for policy in "$SYS_ROOT"/devices/system/cpu/cpufreq/policy*; do
+		[[ -d "$policy" ]] || continue
+		policy_name=${policy##*/}
+		governor_entries+=(
+			"${policy_name}:$(telemetry_value "$policy/scaling_governor")"
+		)
+		current_entries+=(
+			"${policy_name}:$(telemetry_value "$policy/scaling_cur_freq")"
+		)
+		minimum=$(telemetry_value "$policy/scaling_min_freq")
+		maximum=$(telemetry_value "$policy/scaling_max_freq")
+		frequency_entries+=("${policy_name}:${minimum}-${maximum}")
+	done
+	for zone in "$SYS_ROOT"/class/thermal/thermal_zone*; do
+		[[ -d "$zone" ]] || continue
+		zone_name=${zone##*/}
+		zone_type=$(telemetry_value "$zone/type")
+		zone_temp=$(telemetry_value "$zone/temp")
+		thermal_entries+=("${zone_name}:${zone_type}:${zone_temp}")
+	done
+
+	printf \
+		'AIML_TELEMETRY test_case_id=%s phase=%s cpu_online=%s scaling_governors=%s scaling_current_khz=%s policy_frequencies_khz=%s load=%s thermal_millicelsius=%s\n' \
+		"$test_case_id" \
+		"$phase" \
+		"$cpu_online" \
+		"$(join_array , "${governor_entries[@]:-unavailable}")" \
+		"$(join_array , "${current_entries[@]:-unavailable}")" \
+		"$(join_array , "${frequency_entries[@]:-unavailable}")" \
+		"$load" \
+		"$(join_array , "${thermal_entries[@]:-unavailable}")"
+}
+
 parse_label_image_measurement()
 {
 	local output_file=$1
@@ -226,11 +352,14 @@ parse_label_image_measurement()
 	' "$output_file"
 }
 
-parse_benchmark_measurement()
+parse_benchmark_output()
 {
 	local output_file=$1
 
 	awk '
+		function valid_number(value) {
+			return value ~ /^[0-9]+([.][0-9]+)?$/
+		}
 		index($0, "Inference (avg):") {
 			line = $0
 			probe = $0
@@ -247,26 +376,139 @@ parse_benchmark_measurement()
 			sub(/[[:space:]]*$/, "", line)
 			measurement = line
 		}
+		index($0, "count=") && index($0, "p5=") &&
+				index($0, "median=") && index($0, "p95=") {
+			stats_blocks++
+			stats_found = 0
+			delete values
+			for (field = 1; field <= NF; field++) {
+				if ($field ~ /^[a-z0-9_]+=/) {
+					key = $field
+					sub(/=.*/, "", key)
+					value = $field
+					sub(/^[^=]+=/, "", value)
+					values[key] = value
+				}
+			}
+			if (values["count"] ~ /^[0-9]+$/ &&
+					valid_number(values["p5"]) &&
+					valid_number(values["median"]) &&
+					valid_number(values["p95"])) {
+				count = values["count"]
+				minimum = valid_number(values["min"]) ? values["min"] : "na"
+				maximum = valid_number(values["max"]) ? values["max"] : "na"
+				average = valid_number(values["avg"]) ? values["avg"] : "na"
+				stddev = valid_number(values["std"]) ? values["std"] : "na"
+				p5 = values["p5"]
+				median = values["median"]
+				p95 = values["p95"]
+				stats_found = 1
+			} else {
+				invalid_stats = 1
+			}
+		}
 		END {
-			if (markers != 1 || invalid) {
+			if (markers != 1 || invalid || stats_blocks < 2 ||
+					invalid_stats || !stats_found) {
 				exit 1
 			}
-			print measurement
+			printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", measurement,
+				count, minimum, maximum, average, stddev, median, p5, p95
 		}
 	' "$output_file"
 }
 
-run_case()
+calculate_statistics()
+{
+	local samples_file=$1
+
+	awk -v expected="$OUTER_SAMPLE_COUNT" '
+		function sort(values, count,    i, j, candidate) {
+			for (i = 2; i <= count; i++) {
+				candidate = values[i]
+				j = i - 1
+				while (j >= 1 && values[j] > candidate) {
+					values[j + 1] = values[j]
+					j--
+				}
+				values[j + 1] = candidate
+			}
+		}
+		function sample_variance(values, first, last, mean,
+				count, position, delta, total) {
+			count = last - first + 1
+			if (count < 2) {
+				return 0
+			}
+			total = 0
+			for (position = first; position <= last; position++) {
+				delta = values[position] - mean
+				total += delta * delta
+			}
+			return total / (count - 1)
+		}
+		{
+			if ($0 !~ /^[0-9]+([.][0-9]+)?$/) {
+				exit 2
+			}
+			values[++count] = $0 + 0
+			raw_total += $0
+		}
+		END {
+			if (count != expected) {
+				exit 1
+			}
+			sort(values, count)
+			raw_mean = raw_total / count
+			median = (values[count / 2] + values[count / 2 + 1]) / 2
+			for (position = 1; position <= count; position++) {
+				deviations[position] = values[position] > median \
+					? values[position] - median : median - values[position]
+			}
+			sort(deviations, count)
+			mad = (deviations[count / 2] + deviations[count / 2 + 1]) / 2
+			trimmed_total = 0
+			for (position = 2; position < count; position++) {
+				trimmed_total += values[position]
+			}
+			trimmed_count = count - 2
+			trimmed_mean = trimmed_total / trimmed_count
+			raw_variance = sample_variance(values, 1, count, raw_mean)
+			trimmed_variance = sample_variance(values, 2, count - 1, trimmed_mean)
+			raw_stddev = sqrt(raw_variance)
+			trimmed_stddev = sqrt(trimmed_variance)
+			raw_cv = raw_mean == 0 ? 0 : raw_stddev / raw_mean
+			trimmed_cv = trimmed_mean == 0 ? 0 : trimmed_stddev / trimmed_mean
+			printf "%d\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\t%.9f\n",
+				count, values[1], values[count], raw_mean, trimmed_mean,
+				median, mad, raw_variance, raw_stddev, raw_cv,
+				trimmed_variance, trimmed_stddev, trimmed_cv
+		}
+	' "$samples_file"
+}
+
+execution_measurement=
+execution_inner_count=na
+execution_inner_min_us=na
+execution_inner_max_us=na
+execution_inner_avg_us=na
+execution_inner_stddev_us=na
+execution_inner_median_us=na
+execution_inner_p5_us=na
+execution_inner_p95_us=na
+
+execute_sample()
 {
 	local test_case_id=$1
 	local output_kind=$2
 	local working_directory=$3
 	local output_file
-	local measurement
 	local raw_measurement
+	local parsed
 	local command_status
 	local tee_status
 	local prefix_status
+	local metric
 	local -a statuses
 
 	shift 3
@@ -296,6 +538,7 @@ run_case()
 		tee "$output_file" |
 		sed 's/^/TFLITE_OUTPUT /'
 	statuses=("${PIPESTATUS[@]}")
+	printf '\n'
 	set -e
 
 	(( ${#statuses[@]} == 3 )) ||
@@ -312,40 +555,75 @@ run_case()
 			printf 'ERROR: %s exited with status %d\n' \
 				"$test_case_id" "$command_status" >&2
 		fi
-		emit_failure "$test_case_id"
-		return
+		return 1
 	fi
 
 	if (( tee_status != 0 || prefix_status != 0 )); then
 		printf 'ERROR: failed to capture output for %s (tee=%d, prefix=%d)\n' \
 			"$test_case_id" "$tee_status" "$prefix_status" >&2
-		emit_failure "$test_case_id"
-		return
+		return 1
 	fi
 
+	execution_inner_count=na
+	execution_inner_min_us=na
+	execution_inner_max_us=na
+	execution_inner_avg_us=na
+	execution_inner_stddev_us=na
+	execution_inner_median_us=na
+	execution_inner_p5_us=na
+	execution_inner_p95_us=na
 	case "$output_kind" in
 	label-image)
-		if ! measurement=$(parse_label_image_measurement "$output_file"); then
+		if ! execution_measurement=$(parse_label_image_measurement "$output_file"); then
 			printf 'ERROR: expected exactly one valid average-time measurement for %s\n' \
 				"$test_case_id" >&2
-			emit_failure "$test_case_id"
-			return
+			return 1
 		fi
+		execution_inner_count=$LABEL_IMAGE_COUNT
 		;;
 	benchmark)
-		if ! raw_measurement=$(parse_benchmark_measurement "$output_file"); then
-			printf 'ERROR: expected exactly one valid inference-average measurement for %s\n' \
+		if ! parsed=$(parse_benchmark_output "$output_file"); then
+			printf 'ERROR: expected one inference average and valid internal statistics for %s\n' \
 				"$test_case_id" >&2
-			emit_failure "$test_case_id"
-			return
+			return 1
 		fi
+		IFS=$'\t' read -r \
+			raw_measurement \
+			execution_inner_count \
+			execution_inner_min_us \
+			execution_inner_max_us \
+			execution_inner_avg_us \
+			execution_inner_stddev_us \
+			execution_inner_median_us \
+			execution_inner_p5_us \
+			execution_inner_p95_us <<<"$parsed"
+		if [[ ! "$execution_inner_count" =~ ^[0-9]+$ ]] ||
+			(( execution_inner_count < BENCHMARK_NUM_RUNS )); then
+			printf \
+				'ERROR: benchmark inference count for %s was %s; expected at least %s\n' \
+				"$test_case_id" "$execution_inner_count" "$BENCHMARK_NUM_RUNS" >&2
+			return 1
+		fi
+		for metric in \
+			"$execution_inner_min_us" \
+			"$execution_inner_max_us" \
+			"$execution_inner_avg_us" \
+			"$execution_inner_stddev_us" \
+			"$execution_inner_median_us" \
+			"$execution_inner_p5_us" \
+			"$execution_inner_p95_us"; do
+			if [[ "$metric" != na ]] && ! validate_measurement "$metric"; then
+				printf 'ERROR: invalid benchmark internal statistic for %s: %s\n' \
+					"$test_case_id" "$metric" >&2
+				return 1
+			fi
+		done
 		if ! validate_measurement "$raw_measurement"; then
 			printf 'ERROR: invalid microsecond measurement for %s: %s\n' \
 				"$test_case_id" "$raw_measurement" >&2
-			emit_failure "$test_case_id"
-			return
+			return 1
 		fi
-		if ! measurement=$(
+		if ! execution_measurement=$(
 			awk -v value="$raw_measurement" \
 				'BEGIN {
 					milliseconds = value / 1000
@@ -357,20 +635,115 @@ run_case()
 		); then
 			printf 'ERROR: could not convert measurement for %s\n' \
 				"$test_case_id" >&2
-			emit_failure "$test_case_id"
-			return
+			return 1
 		fi
 		;;
 	esac
 
-	if ! validate_measurement "$measurement"; then
+	if ! validate_measurement "$execution_measurement"; then
 		printf 'ERROR: invalid millisecond measurement for %s: %s\n' \
-			"$test_case_id" "$measurement" >&2
+			"$test_case_id" "$execution_measurement" >&2
+		return 1
+	fi
+}
+
+run_case()
+{
+	local test_case_id=$1
+	local output_kind=$2
+	local working_directory=$3
+	local samples_file
+	local warmup_measurement
+	local sample_index
+	local aggregate
+	local count
+	local discarded_low
+	local discarded_high
+	local raw_mean
+	local trimmed_mean
+	local median
+	local mad
+	local raw_variance
+	local raw_stddev
+	local raw_cv
+	local trimmed_variance
+	local trimmed_stddev
+	local trimmed_cv
+
+	shift 3
+
+	samples_file=$(mktemp "$temp_dir/samples.XXXXXX") ||
+		die "could not create samples file in $temp_dir"
+	temporary_files[temporary_file_count]=$samples_file
+	temporary_file_count=$((temporary_file_count + 1))
+
+	emit_telemetry "$test_case_id" before
+	printf '\nRunning unmeasured outer warm-up for %s.\n' "$test_case_id"
+	if ! execute_sample \
+		"$test_case_id" "$output_kind" "$working_directory" "$@"; then
+		emit_telemetry "$test_case_id" after
 		emit_failure "$test_case_id"
 		return
 	fi
+	warmup_measurement=$execution_measurement
+	printf \
+		'AIML_WARMUP test_case_id=%s measurement=%s units=ms inner_count=%s inner_min_us=%s inner_max_us=%s inner_avg_us=%s inner_stddev_us=%s inner_median_us=%s inner_p5_us=%s inner_p95_us=%s\n' \
+		"$test_case_id" "$warmup_measurement" \
+		"$execution_inner_count" "$execution_inner_min_us" \
+		"$execution_inner_max_us" "$execution_inner_avg_us" \
+		"$execution_inner_stddev_us" "$execution_inner_median_us" \
+		"$execution_inner_p5_us" "$execution_inner_p95_us"
 
-	emit_pass "$test_case_id" "$measurement"
+	for ((sample_index = 1;
+		sample_index <= OUTER_SAMPLE_COUNT;
+		sample_index++)); do
+		printf '\nRunning measured sample %d/%d for %s.\n' \
+			"$sample_index" "$OUTER_SAMPLE_COUNT" "$test_case_id"
+		if ! execute_sample \
+			"$test_case_id" "$output_kind" "$working_directory" "$@"; then
+			emit_telemetry "$test_case_id" after
+			emit_failure "$test_case_id"
+			return
+		fi
+		printf '%s\n' "$execution_measurement" >>"$samples_file" ||
+			die "could not record sample for $test_case_id"
+		printf \
+			'AIML_SAMPLE test_case_id=%s index=%d measurement=%s units=ms inner_count=%s inner_min_us=%s inner_max_us=%s inner_avg_us=%s inner_stddev_us=%s inner_median_us=%s inner_p5_us=%s inner_p95_us=%s\n' \
+			"$test_case_id" "$sample_index" "$execution_measurement" \
+			"$execution_inner_count" "$execution_inner_min_us" \
+			"$execution_inner_max_us" "$execution_inner_avg_us" \
+			"$execution_inner_stddev_us" "$execution_inner_median_us" \
+			"$execution_inner_p5_us" "$execution_inner_p95_us"
+	done
+
+	if ! aggregate=$(calculate_statistics "$samples_file"); then
+		printf 'ERROR: could not aggregate exactly %d samples for %s\n' \
+			"$OUTER_SAMPLE_COUNT" "$test_case_id" >&2
+		emit_telemetry "$test_case_id" after
+		emit_failure "$test_case_id"
+		return
+	fi
+	IFS=$'\t' read -r \
+		count discarded_low discarded_high raw_mean trimmed_mean median mad \
+		raw_variance raw_stddev raw_cv trimmed_variance trimmed_stddev \
+		trimmed_cv <<<"$aggregate"
+	for metric in \
+		"$count" "$discarded_low" "$discarded_high" "$raw_mean" \
+		"$trimmed_mean" "$median" "$mad" "$raw_variance" "$raw_stddev" \
+		"$raw_cv" "$trimmed_variance" "$trimmed_stddev" "$trimmed_cv"; do
+		[[ -n "$metric" ]] ||
+			die "aggregate output is incomplete for $test_case_id"
+	done
+
+	emit_telemetry "$test_case_id" after
+	printf \
+		'AIML_STATS test_case_id=%s count=%s discarded_low=%s discarded_high=%s raw_mean=%s trimmed_mean=%s median=%s mad=%s raw_variance=%s raw_stddev=%s raw_cv=%s trimmed_variance=%s trimmed_stddev=%s trimmed_cv=%s units=ms\n' \
+		"$test_case_id" "$count" "$discarded_low" "$discarded_high" \
+		"$raw_mean" "$trimmed_mean" "$median" "$mad" \
+		"$raw_variance" "$raw_stddev" "$raw_cv" \
+		"$trimmed_variance" "$trimmed_stddev" "$trimmed_cv"
+
+	emit_pass "$test_case_id" "$trimmed_mean"
 }
 
 run_label_image()
@@ -379,6 +752,10 @@ run_label_image()
 	local -a args
 
 	args=("--image=$LABEL_IMAGE_INPUT")
+	args+=(
+		"--warmup_runs=$LABEL_IMAGE_WARMUP_RUNS"
+		"--count=$LABEL_IMAGE_COUNT"
+	)
 	case "$accelerator" in
 	cpu)
 		args+=(--use_gpu=false)
@@ -416,6 +793,11 @@ run_benchmark_model()
 	args=(
 		"--graph=$model"
 		"--num_threads=$THREADS"
+		"--warmup_runs=$BENCHMARK_WARMUP_RUNS"
+		"--warmup_min_secs=$BENCHMARK_WARMUP_MIN_SECS"
+		"--num_runs=$BENCHMARK_NUM_RUNS"
+		"--min_secs=$BENCHMARK_MIN_SECS"
+		"--max_secs=$BENCHMARK_MAX_SECS"
 	)
 	if [[ "$ENABLE_OP_PROFILING" == 1 ]]; then
 		args+=(--enable_op_profiling=true)
@@ -459,6 +841,25 @@ fi
 
 validate_positive_integer THREADS "$THREADS"
 validate_positive_integer TIMEOUT_SECONDS "$TIMEOUT_SECONDS"
+validate_positive_integer BENCHMARK_WARMUP_RUNS "$BENCHMARK_WARMUP_RUNS"
+validate_nonnegative_number BENCHMARK_WARMUP_MIN_SECS "$BENCHMARK_WARMUP_MIN_SECS"
+validate_positive_integer BENCHMARK_NUM_RUNS "$BENCHMARK_NUM_RUNS"
+validate_nonnegative_number BENCHMARK_MIN_SECS "$BENCHMARK_MIN_SECS"
+validate_positive_number BENCHMARK_MAX_SECS "$BENCHMARK_MAX_SECS"
+validate_positive_integer LABEL_IMAGE_WARMUP_RUNS "$LABEL_IMAGE_WARMUP_RUNS"
+validate_positive_integer LABEL_IMAGE_COUNT "$LABEL_IMAGE_COUNT"
+awk \
+	-v warmup_min="$BENCHMARK_WARMUP_MIN_SECS" \
+	-v minimum="$BENCHMARK_MIN_SECS" \
+	-v maximum="$BENCHMARK_MAX_SECS" \
+	'BEGIN { exit !(maximum >= warmup_min && maximum >= minimum) }' ||
+	die "BENCHMARK_MAX_SECS must be at least both benchmark minimum durations"
+awk \
+	-v timeout="$TIMEOUT_SECONDS" \
+	-v maximum="$BENCHMARK_MAX_SECS" \
+	-v headroom="$TIMEOUT_HEADROOM_SECONDS" \
+	'BEGIN { exit !(timeout >= (2 * maximum) + headroom) }' ||
+	die "TIMEOUT_SECONDS must be at least twice BENCHMARK_MAX_SECS plus ${TIMEOUT_HEADROOM_SECONDS} seconds"
 validate_boolean ENABLE_OP_PROFILING "$ENABLE_OP_PROFILING"
 validate_boolean RUN_LABEL_IMAGE "$RUN_LABEL_IMAGE"
 validate_boolean RUN_BUILTIN_MODEL "$RUN_BUILTIN_MODEL"
@@ -632,14 +1033,22 @@ if [[ "$SETUP_COMPAT_LINKS" == 1 ]]; then
 fi
 
 printf \
-	'AIML_PROVENANCE qairt=%s tflite_commit=%s configuration_version=%s threads=%s timeout_seconds=%s op_profiling=%s accelerators=%s\n' \
+	'AIML_PROVENANCE qairt=%s tflite_commit=%s configuration_version=%s threads=%s timeout_seconds=%s op_profiling=%s accelerators=%s outer_warmup_runs=1 outer_sample_count=%s benchmark_warmup_runs=%s benchmark_warmup_min_secs=%s benchmark_num_runs=%s benchmark_min_secs=%s benchmark_max_secs=%s label_image_warmup_runs=%s label_image_count=%s\n' \
 	"$qairt_version" \
 	"$tflite_commit" \
 	"$TEST_CONFIGURATION_VERSION" \
 	"$THREADS" \
 	"$TIMEOUT_SECONDS" \
 	"$ENABLE_OP_PROFILING" \
-	"$accelerator_csv"
+	"$accelerator_csv" \
+	"$OUTER_SAMPLE_COUNT" \
+	"$BENCHMARK_WARMUP_RUNS" \
+	"$BENCHMARK_WARMUP_MIN_SECS" \
+	"$BENCHMARK_NUM_RUNS" \
+	"$BENCHMARK_MIN_SECS" \
+	"$BENCHMARK_MAX_SECS" \
+	"$LABEL_IMAGE_WARMUP_RUNS" \
+	"$LABEL_IMAGE_COUNT"
 
 if [[ "$RUN_LABEL_IMAGE" == 1 ]]; then
 	printf 'INPUT test_case_prefix=tflite-label-image sha256=%s path=%q\n' \

@@ -49,7 +49,7 @@ class ComparePerformanceTest(unittest.TestCase):
     def write_report(self, directory, board_id, board_name, measurement):
         directory.mkdir(parents=True)
         report = {
-            "schema_version": 1,
+            "schema_version": 2,
             "suite": "trixie",
             "provenance": {
                 "aiml_container": {

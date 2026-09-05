@@ -15,6 +15,7 @@ WORKLOADS = (
     ("benchmark_model", "Benchmark model"),
 )
 ACCELERATORS = ("cpu", "gpu", "cdsp")
+SCHEMA_VERSION = 2
 
 
 def parse_args():
@@ -37,7 +38,7 @@ def load_reports(input_dir):
     container = None
     for report_file in report_files:
         report = json.loads(report_file.read_text(encoding="utf-8"))
-        if report.get("schema_version") != 1:
+        if report.get("schema_version") != SCHEMA_VERSION:
             raise ValueError(f"unsupported report schema in {report_file}")
         if suite is None:
             suite = report["suite"]
