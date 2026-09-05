@@ -3,16 +3,13 @@ name: Build on PR
 on:
   pull_request:
 
-# implicitely set all other permissions to none
-permissions:
-  checks: write # lava-test.yml
-  contents: read # docker_build.yml lava-schema-check.yml lava-test.yml
-  packages: read # lava-test.yml
-  pull-requests: write # lava-test.yml
+permissions: {}
 
 jobs:
   build-pr:
     uses: ./.github/workflows/docker_build.yml
+    permissions:
+      contents: read
 
   schema-check:
     uses: ./.github/workflows/lava-schema-check.yml
