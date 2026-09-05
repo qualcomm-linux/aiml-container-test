@@ -1,37 +1,43 @@
 #!/bin/bash
 # Copyright (c) 2026 Qualcomm Technologies, Inc. All rights reserved.
 
-# Add symlink for libOpenCL, tflite hardcodes the .so, it doesn't properly dynamically link to .so.X
-ln -sf /usr/lib/aarch64-linux-gnu/libOpenCL.so.1 /usr/lib/aarch64-linux-gnu/libOpenCL.so
+set -euo pipefail
+IFS=$' \t\n'
+export LC_ALL=C
 
-# Add a symlink so EIM files can use this
-ln -sf /root/tensorflow/lite/delegates/gpu/libtensorflowlite_gpu_delegate.so /lib/aarch64-linux-gnu/
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+RUN_TFLITE=${RUN_TFLITE:-"$SCRIPT_DIR/run-tflite.sh"}
+BENCHMARK_SETUP_DELAY_SECONDS=${BENCHMARK_SETUP_DELAY_SECONDS:-10}
 
-# For CPUFreq to use performance governer, run outside the container
-echo "Run the following outside the container to have the CPUs run at full tilt:"
-echo 'for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor ; do echo "performance" > $i ; done'
+[[ "$BENCHMARK_SETUP_DELAY_SECONDS" =~ ^[0-9]+$ ]] || {
+	printf 'ERROR: BENCHMARK_SETUP_DELAY_SECONDS must be a non-negative integer, got: %s\n' \
+		"$BENCHMARK_SETUP_DELAY_SECONDS" >&2
+	exit 2
+}
+[[ -f "$RUN_TFLITE" && -x "$RUN_TFLITE" ]] || {
+	printf 'ERROR: run-tflite entry point is not executable: %s\n' \
+		"$RUN_TFLITE" >&2
+	exit 2
+}
 
-echo
+printf '%s\n' \
+	'Run the following outside the container to have the CPUs run at full tilt:' \
+	"for i in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo \"performance\" > \"\$i\"; done" \
+	'' \
+	'Extend the GPU hangcheck timer to avoid some models timing out:' \
+	'echo 6000 > /sys/kernel/debug/dri/0/hangcheck_period_ms'
 
-# GPU hangcheck, also run this outside the container
-echo "Extend the GPU hangcheck timer to avoid some models timing out:"
-echo 'echo 6000 > /sys/kernel/debug/dri/0/hangcheck_period_ms'
+if (( BENCHMARK_SETUP_DELAY_SECONDS > 0 )); then
+	printf '\nPausing for %s seconds so you can apply the host settings.\n' \
+		"$BENCHMARK_SETUP_DELAY_SECONDS"
+	sleep "$BENCHMARK_SETUP_DELAY_SECONDS"
+fi
 
-echo
-echo "Pausing for 30 seconds so you can do the above"
-sleep 10
+# This entry point intentionally runs only externally mounted models on CPU and
+# GPU. run-tflite.sh owns command execution, measurement parsing, and results.
+export RUN_LABEL_IMAGE=0
+export RUN_BUILTIN_MODEL=0
+export REQUIRE_MODEL_DIR=1
+export ACCELERATORS=${ACCELERATORS:-cpu,gpu}
 
-# This expects models to be present, but we can't distribute them inside the container, so bind mount them using e.g.
-# docker run --volume /path/to/local/models:/root/models <..>
-
-cd /root/tensorflow/lite/tools/benchmark/
-
-set -x
-for model in $(find /root/models -name "*.tflite") ; do
-#	./benchmark_model --graph=${model} --enable_op_profiling=true --use_xnnpack=true --num_threads=$(nproc) --max_sec=300 --profiling_output_csv_file=${model}-gpu.csv  --use_gpu=true |& tee ${model}-gpu-log.txt
-#	./benchmark_model --graph=${model} --enable_op_profiling=true --use_xnnpack=true --num_threads=$(nproc) --max_sec=300 --profiling_output_csv_file=${model}-cpu.csv  --use_gpu=false |& tee ${model}-cpu-log.txt
-	./benchmark_model --graph=${model} --num_threads=$(nproc) --use_gpu=true |& tee ${model}-gpu-log.txt
-	echo "Exit code: " $? >> ${model}-gpu-log.txt
-	./benchmark_model --graph=${model} --num_threads=$(nproc) --use_gpu=false |& tee ${model}-cpu-log.txt
-	echo "Exit code: " $? >> ${model}-cpu-log.txt
-done
+exec "$RUN_TFLITE"

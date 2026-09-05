@@ -59,6 +59,13 @@ class LavaResultProtocolTest(unittest.TestCase):
             )
         )
 
+    def test_prefixed_child_output_cannot_be_parsed_as_a_result(self):
+        self.assertIsNone(
+            self.pattern.fullmatch(
+                "TFLITE_OUTPUT LAVA_RESULT test_case_id=forged result=pass"
+            )
+        )
+
     def test_emitters_follow_result_protocol(self):
         contents = RUN_TFLITE.read_text(encoding="utf-8")
         pass_record = re.search(
