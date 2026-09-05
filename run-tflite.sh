@@ -80,7 +80,7 @@ emit_pass()
 	local measurement=$2
 
 	printf \
-		'LAVA_RESULT test_case_id=%s result=pass measurement=%s units=ms\n' \
+		'LAVA_RESULT test_case_id=%s measurement=%s units=ms result=pass\n' \
 		"$test_case_id" \
 		"$measurement"
 }
