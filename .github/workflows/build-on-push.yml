@@ -49,6 +49,7 @@ jobs:
       boards_include: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]'
       build_url: ${{ needs.resolve-qcom-image-generic.outputs.build_url }}
       container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      image_source: generic
       qcom_event: ${{ needs.resolve-qcom-image-generic.outputs.event }}
       qcom_ref: ${{ needs.resolve-qcom-image-generic.outputs.ref }}
       qcom_run_attempt: ${{ needs.resolve-qcom-image-generic.outputs.run_attempt }}
@@ -70,9 +71,10 @@ jobs:
     secrets:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
-      boards_include: '["monaco-arduino-monza"]'
+      boards_include: '["monaco-arduino-monza","qrb2210-arduino-imola"]'
       build_url: ${{ needs.resolve-qcom-image-arduino.outputs.build_url }}
       container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      image_source: arduino
       qcom_event: ${{ needs.resolve-qcom-image-arduino.outputs.event }}
       qcom_ref: ${{ needs.resolve-qcom-image-arduino.outputs.ref }}
       qcom_run_attempt: ${{ needs.resolve-qcom-image-arduino.outputs.run_attempt }}

@@ -5,6 +5,7 @@
 import csv
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -260,6 +261,59 @@ class ReportLavaResultsTest(unittest.TestCase):
         self.assertEqual([job["id"] for job in boards[0]["lava_jobs"]], [41, 42])
         self.assertEqual(boards[0]["actual_device"], "test-device-01")
         self.assertEqual(boards[0]["results"][0]["measurement"], 30.5)
+
+    def test_keeps_monza_and_imola_devices_distinct(self):
+        repository_boards = Path(__file__).parents[2] / "ci/boards.json"
+        self.boards_file.write_text(
+            repository_boards.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (self.input_dir / "job-42.json").write_text(
+            json.dumps(
+                {
+                    "id": 42,
+                    "requested_device_type": "monaco-arduino-monza",
+                    "actual_device": "monza-01",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.input_dir / "job-43.json").write_text(
+            json.dumps(
+                {
+                    "id": 43,
+                    "requested_device_type": "qrb2210-arduino-imola",
+                    "actual_device": "unoq-04",
+                }
+            ),
+            encoding="utf-8",
+        )
+        shutil.copyfile(
+            self.input_dir / "job-42.yaml", self.input_dir / "job-43.yaml"
+        )
+        shutil.copyfile(
+            self.input_dir / "job-42-tests.csv",
+            self.input_dir / "job-43-tests.csv",
+        )
+
+        self.run_report()
+        report = json.loads(
+            (self.output_dir / "results.json").read_text(encoding="utf-8")
+        )
+        boards = report["boards"]
+        summary = (self.output_dir / "summary.md").read_text(encoding="utf-8")
+
+        self.assertEqual(
+            [(board["id"], board["actual_device"]) for board in boards],
+            [
+                ("qrb2210-arduino-imola", "unoq-04"),
+                ("monaco-arduino-monza", "monza-01"),
+            ],
+        )
+        self.assertIn("## Arduino UNO Q", summary)
+        self.assertIn("## Arduino VENTUNO Q", summary)
+        self.assertIn("`unoq-04`", summary)
+        self.assertIn("`monza-01`", summary)
 
     def run_report(self):
         subprocess.run(

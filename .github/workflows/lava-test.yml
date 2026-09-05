@@ -43,12 +43,16 @@ on:
         description: Debian suite used for the LAVA image
         required: true
         type: string
+      image_source:
+        description: qcom-deb-images workflow family used by the selected boards
+        required: true
+        type: string
       report_scope:
         description: Unique report and artifact namespace
         required: true
         type: string
       boards_include:
-        description: JSON array of board names to include; empty selects all boards
+        description: JSON array of board names to include; empty selects boards for image_source
         required: false
         type: string
         default: ''
@@ -62,6 +66,7 @@ permissions: {}
 env:
   BOARDS_INCLUDE: ${{ inputs.boards_include }}
   BUILD_URL: ${{ inputs.build_url }}
+  IMAGE_SOURCE: ${{ inputs.image_source }}
   LAVA_CI: ci/lava/
   REPORT_SCOPE: ${{ inputs.report_scope }}
   SUITE: ${{ inputs.suite }}
@@ -84,14 +89,25 @@ jobs:
         run: |
           echo "Triggered by ${{ github.event_name }}"
           echo "Build URL: $BUILD_URL"
+      - name: Validate board routing
+        id: boards
+        run: |
+          python3 ci/select_lava_boards.py \
+            --boards ci/boards.json \
+            --lava-dir "$LAVA_CI" \
+            --image-source "$IMAGE_SOURCE" \
+            --include "$BOARDS_INCLUDE" \
+            --github-output "$GITHUB_OUTPUT"
       - name: "List jobs"
         id: listjobs
+        env:
+          SELECTED_BOARDS: ${{ steps.boards.outputs.boards }}
         run: |
           [[ "$REPORT_SCOPE" =~ ^[a-z0-9-]+$ ]]
           # json with display names and relative filenames to LAVA templates
           J=$(find "${LAVA_CI}" -name '*.yaml' -print0 |
                   jq --compact-output --raw-input --slurp \
-                      --argjson include "${BOARDS_INCLUDE:-[]}" '
+                      --argjson include "$SELECTED_BOARDS" '
                       # split null-delimited list and remove last empty item
                       split("\u0000")[:-1]
                       # remove leading "ci/lava/"
@@ -111,9 +127,7 @@ jobs:
                               | gsub("/"; " ")
                           )
                         })
-                      | if ($include | length) > 0 then
-                          map(select(.board as $b | $include | any(. == $b)))
-                        else . end
+                      | map(select(.board as $b | $include | any(. == $b)))
                       | map(del(.board))
                       # output as matrix.include list
                       | { include: . }

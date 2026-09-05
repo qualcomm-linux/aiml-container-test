@@ -18,9 +18,9 @@ on:
           - generic
           - arduino
       boards_include:
-        description: JSON array of LAVA board names
-        required: true
-        default: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]'
+        description: JSON array of LAVA board names; empty selects every board for the image source
+        required: false
+        default: ''
         type: string
       suite:
         description: Debian suite used for the LAVA image
@@ -71,11 +71,17 @@ jobs:
     with:
       create_test_url: true
 
+  schema-check:
+    uses: ./.github/workflows/lava-schema-check.yml
+    permissions:
+      contents: read
+
   test-daily:
     name: Test AIML container in LAVA
     needs:
       - resolve-qcom-image
       - build-daily
+      - schema-check
     uses: ./.github/workflows/lava-test.yml
     permissions:
       actions: read
@@ -86,8 +92,9 @@ jobs:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
       build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
-      boards_include: ${{ inputs.boards_include || '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]' }}
+      boards_include: ${{ inputs.boards_include || '' }}
       container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      image_source: ${{ inputs.image_source || 'generic' }}
       qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
       qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
       qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
