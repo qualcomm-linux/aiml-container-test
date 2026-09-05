@@ -27,7 +27,7 @@ class LavaResultProtocolTest(unittest.TestCase):
     def test_pass_record_includes_measurement(self):
         match = self.pattern.fullmatch(
             "LAVA_RESULT test_case_id=tflite-benchmark-cdsp "
-            "measurement=0.986403 units=ms result=pass"
+            "measurement=0.986403 units=ms result=pass record_end=1"
         )
 
         self.assertIsNotNone(match)
@@ -43,7 +43,8 @@ class LavaResultProtocolTest(unittest.TestCase):
 
     def test_failure_record_omits_measurement(self):
         match = self.pattern.fullmatch(
-            "LAVA_RESULT test_case_id=tflite-benchmark-cdsp result=fail"
+            "LAVA_RESULT test_case_id=tflite-benchmark-cdsp "
+            "result=fail record_end=1"
         )
 
         self.assertIsNotNone(match)
@@ -51,13 +52,15 @@ class LavaResultProtocolTest(unittest.TestCase):
         self.assertIsNone(match.group("measurement"))
         self.assertIsNone(match.group("units"))
 
-    def test_success_prefix_without_result_does_not_match(self):
-        self.assertIsNone(
-            self.pattern.fullmatch(
-                "LAVA_RESULT test_case_id=tflite-benchmark-cdsp "
-                "measurement=0.986403 units=ms"
-            )
+    def test_no_streaming_prefix_matches(self):
+        record = (
+            "LAVA_RESULT test_case_id=tflite-benchmark-cdsp "
+            "measurement=0.986403 units=ms result=pass record_end=1"
         )
+
+        for length in range(1, len(record)):
+            with self.subTest(prefix=record[:length]):
+                self.assertIsNone(self.pattern.fullmatch(record[:length]))
 
     def test_prefixed_child_output_cannot_be_parsed_as_a_result(self):
         self.assertIsNone(
@@ -87,7 +90,7 @@ class LavaResultProtocolTest(unittest.TestCase):
         )
         self.assertEqual(
             failure_record.group(1),
-            r"LAVA_RESULT test_case_id=%s result=fail\n",
+            r"LAVA_RESULT test_case_id=%s result=fail record_end=1\n",
         )
 
 

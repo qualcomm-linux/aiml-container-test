@@ -174,7 +174,7 @@ emit_pass()
 	local measurement=$2
 
 	printf \
-		'LAVA_RESULT test_case_id=%s measurement=%s units=ms result=pass\n' \
+		'LAVA_RESULT test_case_id=%s measurement=%s units=ms result=pass record_end=1\n' \
 		"$test_case_id" \
 		"$measurement"
 }
@@ -183,7 +183,7 @@ emit_failure()
 {
 	local test_case_id=$1
 
-	printf 'LAVA_RESULT test_case_id=%s result=fail\n' "$test_case_id"
+	printf 'LAVA_RESULT test_case_id=%s result=fail record_end=1\n' "$test_case_id"
 	failures=$((failures + 1))
 }
 

@@ -25,9 +25,9 @@ Once inside run the helper script:
 ```bash
 root@qrb2210-rb1-core-kit:/# ./run-tflite.sh
 ...
-LAVA_RESULT test_case_id=tflite-label-image-cpu measurement=31.488 units=ms result=pass
+LAVA_RESULT test_case_id=tflite-label-image-cpu measurement=31.488 units=ms result=pass record_end=1
 ...
-LAVA_RESULT test_case_id=tflite-benchmark-mobilenet-quant-v1-224-cpu measurement=105.784 units=ms result=pass
+LAVA_RESULT test_case_id=tflite-benchmark-mobilenet-quant-v1-224-cpu measurement=105.784 units=ms result=pass record_end=1
 ```
 
 Additional `.tflite` models mounted under `/root/models` are benchmarked

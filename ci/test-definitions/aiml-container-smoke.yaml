@@ -2,7 +2,7 @@ metadata:
   format: Lava-Test Test Definition 1.0
   name: aiml-container-smoke
 parse:
-  pattern: '^LAVA_RESULT test_case_id=(?P<test_case_id>\S+)(?: measurement=(?P<measurement>\S+) units=(?P<units>\S+))? result=(?P<result>\S+)\r?$'
+  pattern: '^LAVA_RESULT test_case_id=(?P<test_case_id>\S+)(?: measurement=(?P<measurement>\S+) units=(?P<units>\S+))? result=(?P<result>pass|fail) record_end=1\r?$'
 run:
   steps:
   - |
