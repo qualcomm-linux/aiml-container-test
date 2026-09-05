@@ -364,6 +364,37 @@ def parse_diagnostics(messages):
     return diagnostics
 
 
+def parse_lava_results(messages):
+    pattern = re.compile(
+        r"^LAVA_RESULT test_case_id=(?P<test_case_id>\S+)"
+        r"(?: measurement=(?P<measurement>\S+) units=(?P<unit>\S+))?"
+        r" result=(?P<result>pass|fail) record_end=1$"
+    )
+    results = {}
+    for message in messages:
+        if not message.startswith("LAVA_RESULT "):
+            continue
+        match = pattern.fullmatch(message)
+        if match is None:
+            raise ValueError(f"malformed LAVA result record: {message}")
+        result = match.groupdict()
+        test_case_id = result.pop("test_case_id")
+        if test_case_id in results:
+            raise ValueError(f"duplicate LAVA result record: {test_case_id}")
+        result["measurement"] = parse_measurement(result["measurement"])
+        if result["result"] == "pass":
+            if result["measurement"] is None or result["unit"] != "ms":
+                raise ValueError(
+                    f"passing LAVA result lacks an ms measurement: {test_case_id}"
+                )
+        elif result["measurement"] is not None or result["unit"] is not None:
+            raise ValueError(
+                f"failed LAVA result contains a measurement: {test_case_id}"
+            )
+        results[test_case_id] = result
+    return results
+
+
 def parse_test_case(test_case_id):
     if test_case_id.startswith("tflite-label-image-"):
         accelerator = test_case_id.removeprefix("tflite-label-image-")
@@ -595,6 +626,7 @@ def load_jobs(input_dir, board_map, lava_url):
         messages = extract_log_messages(log_file.read_text(encoding="utf-8"))
         provenance = parse_log_provenance(messages)
         diagnostics = parse_diagnostics(messages)
+        raw_results = parse_lava_results(messages)
         board["kernel"] = provenance["kernel"] or board["kernel"]
         board["qairt"] = provenance["qairt"] or board["qairt"]
         board["tflite_commit"] = (
@@ -666,6 +698,7 @@ def load_jobs(input_dir, board_map, lava_url):
             ),
         }
 
+        api_results = {}
         with tests_file.open(newline="", encoding="utf-8") as source:
             for row in csv.DictReader(source):
                 test_case_id = row["name"]
@@ -673,10 +706,20 @@ def load_jobs(input_dir, board_map, lava_url):
                     continue
                 if not test_case_id.startswith("tflite-"):
                     continue
+                if test_case_id in api_results:
+                    raise ValueError(
+                        f"duplicate LAVA API result for {test_case_id}"
+                    )
 
                 parsed = parse_test_case(test_case_id)
                 model_sha256 = provenance["models"].get(parsed["model_id"])
                 measurement = parse_measurement(row["measurement"])
+                api_result = {
+                    "result": row["result"],
+                    "measurement": measurement,
+                    "unit": row["unit"] or None,
+                }
+                api_results[test_case_id] = api_result
                 case_diagnostics = validate_case_diagnostics(
                     test_case_id,
                     row["result"],
@@ -708,6 +751,20 @@ def load_jobs(input_dir, board_map, lava_url):
                         "comparison_scope": None,
                         "comparison_status": "no-baseline",
                     }
+                )
+        if board["test_configuration"]["version"] == MEASUREMENT_METHOD_VERSION:
+            if raw_results != api_results:
+                missing = sorted(set(raw_results) - set(api_results))
+                unexpected = sorted(set(api_results) - set(raw_results))
+                mismatched = sorted(
+                    test_case_id
+                    for test_case_id in set(raw_results) & set(api_results)
+                    if raw_results[test_case_id] != api_results[test_case_id]
+                )
+                raise ValueError(
+                    f"LAVA result mismatch for job {job_id}: "
+                    f"missing={missing}, unexpected={unexpected}, "
+                    f"mismatched={mismatched}"
                 )
 
     for board in boards.values():
