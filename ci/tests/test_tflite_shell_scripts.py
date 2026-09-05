@@ -198,20 +198,20 @@ class TfliteShellScriptsTest(unittest.TestCase):
             self.result_lines(completed),
             [
                 "LAVA_RESULT test_case_id=tflite-label-image-cpu "
-                "measurement=1.25 units=ms result=pass",
+                "measurement=1.25 units=ms result=pass record_end=1",
                 "LAVA_RESULT test_case_id=tflite-label-image-gpu "
-                "measurement=2.50 units=ms result=pass",
+                "measurement=2.50 units=ms result=pass record_end=1",
                 "LAVA_RESULT test_case_id=tflite-label-image-cdsp "
-                "measurement=3.75 units=ms result=pass",
+                "measurement=3.75 units=ms result=pass record_end=1",
                 "LAVA_RESULT test_case_id=tflite-benchmark-"
                 "mobilenet-quant-v1-224-cpu "
-                "measurement=1.000000 units=ms result=pass",
+                "measurement=1.000000 units=ms result=pass record_end=1",
                 "LAVA_RESULT test_case_id=tflite-benchmark-"
                 "mobilenet-quant-v1-224-gpu "
-                "measurement=2.000000 units=ms result=pass",
+                "measurement=2.000000 units=ms result=pass record_end=1",
                 "LAVA_RESULT test_case_id=tflite-benchmark-"
                 "mobilenet-quant-v1-224-cdsp "
-                "measurement=3.000000 units=ms result=pass",
+                "measurement=3.000000 units=ms result=pass record_end=1",
             ],
         )
         self.assertIn(
@@ -232,7 +232,10 @@ class TfliteShellScriptsTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertEqual(
             self.result_lines(completed),
-            ["LAVA_RESULT test_case_id=tflite-benchmark-fail-cpu result=fail"],
+            [
+                "LAVA_RESULT test_case_id=tflite-benchmark-fail-cpu "
+                "result=fail record_end=1"
+            ],
         )
         self.assertIn("exited with status 7", completed.stderr)
 
@@ -251,7 +254,7 @@ class TfliteShellScriptsTest(unittest.TestCase):
             self.result_lines(completed),
             [
                 "LAVA_RESULT test_case_id=tflite-benchmark-timeout-cpu "
-                "result=fail"
+                "result=fail record_end=1"
             ],
         )
         self.assertIn("timed out after 2 seconds", completed.stderr)
@@ -277,7 +280,11 @@ class TfliteShellScriptsTest(unittest.TestCase):
 
                 self.assertEqual(completed.returncode, 1)
                 self.assertEqual(len(self.result_lines(completed)), 1)
-                self.assertTrue(self.result_lines(completed)[0].endswith("result=fail"))
+                self.assertTrue(
+                    self.result_lines(completed)[0].endswith(
+                        "result=fail record_end=1"
+                    )
+                )
                 self.assertNotIn("measurement=", self.result_lines(completed)[0])
 
     def test_failures_are_aggregated_without_skipping_later_cases(self):
@@ -295,9 +302,10 @@ class TfliteShellScriptsTest(unittest.TestCase):
         self.assertEqual(
             self.result_lines(completed),
             [
-                "LAVA_RESULT test_case_id=tflite-benchmark-fail-cpu result=fail",
+                "LAVA_RESULT test_case_id=tflite-benchmark-fail-cpu "
+                "result=fail record_end=1",
                 "LAVA_RESULT test_case_id=tflite-benchmark-z-model-cpu "
-                "measurement=1.000000 units=ms result=pass",
+                "measurement=1.000000 units=ms result=pass record_end=1",
             ],
         )
         self.assertIn("1 TensorFlow Lite test(s) failed.", completed.stderr)
@@ -333,9 +341,9 @@ class TfliteShellScriptsTest(unittest.TestCase):
             self.result_lines(completed),
             [
                 "LAVA_RESULT test_case_id=tflite-benchmark-space-model-cpu "
-                "measurement=1.000000 units=ms result=pass",
+                "measurement=1.000000 units=ms result=pass record_end=1",
                 "LAVA_RESULT test_case_id=tflite-benchmark-space-model-gpu "
-                "measurement=2.000000 units=ms result=pass",
+                "measurement=2.000000 units=ms result=pass record_end=1",
             ],
         )
         self.assertNotIn("tflite-label-image", completed.stdout)
