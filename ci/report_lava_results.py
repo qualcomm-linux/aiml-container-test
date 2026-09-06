@@ -368,7 +368,7 @@ def parse_lava_results(messages):
     pattern = re.compile(
         r"^LAVA_RESULT test_case_id=(?P<test_case_id>\S+)"
         r"(?: measurement=(?P<measurement>\S+) units=(?P<unit>\S+))?"
-        r" result=(?P<result>pass|fail) record_end=1$"
+        r" result=(?P<result>pass|fail) record_end=1\r?$"
     )
     results = {}
     for message in messages:
@@ -697,6 +697,13 @@ def load_jobs(input_dir, board_map, lava_url):
                 else None
             ),
         }
+        configuration_version = board["test_configuration"]["version"]
+        if configuration_version != MEASUREMENT_METHOD_VERSION:
+            raise ValueError(
+                f"job {job_id} has configuration version "
+                f"{configuration_version!r}; expected "
+                f"{MEASUREMENT_METHOD_VERSION}"
+            )
 
         api_results = {}
         with tests_file.open(newline="", encoding="utf-8") as source:
@@ -752,20 +759,19 @@ def load_jobs(input_dir, board_map, lava_url):
                         "comparison_status": "no-baseline",
                     }
                 )
-        if board["test_configuration"]["version"] == MEASUREMENT_METHOD_VERSION:
-            if raw_results != api_results:
-                missing = sorted(set(raw_results) - set(api_results))
-                unexpected = sorted(set(api_results) - set(raw_results))
-                mismatched = sorted(
-                    test_case_id
-                    for test_case_id in set(raw_results) & set(api_results)
-                    if raw_results[test_case_id] != api_results[test_case_id]
-                )
-                raise ValueError(
-                    f"LAVA result mismatch for job {job_id}: "
-                    f"missing={missing}, unexpected={unexpected}, "
-                    f"mismatched={mismatched}"
-                )
+        if raw_results != api_results:
+            missing = sorted(set(raw_results) - set(api_results))
+            unexpected = sorted(set(api_results) - set(raw_results))
+            mismatched = sorted(
+                test_case_id
+                for test_case_id in set(raw_results) & set(api_results)
+                if raw_results[test_case_id] != api_results[test_case_id]
+            )
+            raise ValueError(
+                f"LAVA result mismatch for job {job_id}: "
+                f"missing={missing}, unexpected={unexpected}, "
+                f"mismatched={mismatched}"
+            )
 
     for board in boards.values():
         board["lava_jobs"].sort(key=lambda job: job["id"])
