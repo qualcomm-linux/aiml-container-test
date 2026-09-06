@@ -383,6 +383,16 @@ class ReportLavaResultsTest(unittest.TestCase):
 
         self.assertEqual(len(boards[0]["results"][0]["samples"]), 10)
 
+    def test_raw_result_parser_accepts_protocol_carriage_return(self):
+        results = REPORT.parse_lava_results(
+            [
+                "LAVA_RESULT test_case_id=tflite-label-image-cpu "
+                "measurement=30.5 units=ms result=pass record_end=1\r"
+            ]
+        )
+
+        self.assertEqual(results["tflite-label-image-cpu"]["result"], "pass")
+
     def test_reads_old_report_for_context(self):
         previous_path = self.root / "previous.json"
         previous_path.write_text(
@@ -448,6 +458,24 @@ class ReportLavaResultsTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError, "missing=.*tflite-label-image-cpu"
+        ):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
+
+    def test_rejects_missing_current_configuration_version(self):
+        log_path = self.input_dir / "job-42.yaml"
+        log_path.write_text(
+            log_path.read_text(encoding="utf-8").replace(
+                " configuration_version=3", ""
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, "configuration version None; expected 3"
         ):
             REPORT.load_jobs(
                 self.input_dir,
