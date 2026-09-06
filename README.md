@@ -33,6 +33,18 @@ LAVA_RESULT test_case_id=tflite-benchmark-mobilenet-quant-v1-224-cpu measurement
 Additional `.tflite` models mounted under `/root/models` are benchmarked
 recursively. The model directory can remain read-only because benchmark results
 are emitted on standard output instead of being written next to the models.
+Each logical case runs one unmeasured outer warm-up followed by 10 measured
+executions. The published LAVA measurement is the arithmetic mean after
+discarding exactly one lowest and one highest sample; raw samples, dispersion
+statistics, benchmark-internal statistics, and available read-only DUT telemetry
+are retained in the performance artifact.
+
+`benchmark_model` defaults to 10 warm-up runs (at least 1 second) and 100
+measured runs (at least 3 seconds, at most 150 seconds) per outer execution.
+`label_image` uses its supported `--warmup_runs=10` and `--count=100` options.
+These settings can be overridden with the corresponding
+`BENCHMARK_*` and `LABEL_IMAGE_*` environment variables; invalid or incomplete
+measurements fail the logical test instead of being omitted from the aggregate.
 
 `./benchmark-tflite.sh` runs only the externally mounted models, on CPU and GPU,
 using the same validation, timeout, measurement, and result protocol as
@@ -43,6 +55,9 @@ GPU device is unavailable.
 
 CI tracks TensorFlow Lite latency per board in LAVA. Measurements and comparisons
 are published with each [Daily LAVA workflow][daily] run.
+LAVA image resolution accepts only successful trusted `qcom-deb-images` workflow
+runs from `main` that are no more than 14 days old; all artifact pointer and image
+validation remains mandatory.
 
 ## License
 

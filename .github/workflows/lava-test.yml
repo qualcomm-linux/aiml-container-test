@@ -381,7 +381,27 @@ jobs:
             ' <<<"$artifacts")
 
           selected_run_id=""
-          rm -rf previous-candidate previous-report previous-report.zip
+          selected_scope=""
+          fallback_run_id=""
+          current_devices=$(jq -s --slurpfile metadata ci/boards.json '
+            map(
+              .requested_device_type as $device_type
+              | . + {
+                  board_id: (
+                    $metadata[0].boards
+                    | to_entries[]
+                    | select(.value.device_types | index($device_type))
+                    | .key
+                  )
+                }
+            )
+            | sort_by(.id)
+            | group_by(.board_id)
+            | map(last | {key: .board_id, value: (.actual_device // "")})
+            | from_entries
+          ' report-input/job-*.json)
+          (( $(jq 'length' <<<"$current_devices") > 0 ))
+          rm -rf previous-candidate previous-fallback previous-report previous-report.zip
           for candidate in "${candidates[@]}"; do
             read -r artifact_id run_id <<<"$candidate"
             if ! gh api \
@@ -408,17 +428,43 @@ jobs:
                 )
               )
             ' previous-candidate/results.json >/dev/null; then
-              mv previous-candidate previous-report
-              selected_run_id="$run_id"
-              echo "Using previous performance report from run ${run_id}"
-              break
+              if jq -e --argjson current "$current_devices" '
+                [.boards[] | {key: .id, value: (.actual_device // "")}]
+                | from_entries as $candidate
+                | all(
+                    $current | to_entries[];
+                    .value != "" and $candidate[.key] == .value
+                  )
+              ' previous-candidate/results.json >/dev/null; then
+                mv previous-candidate previous-report
+                selected_run_id="$run_id"
+                selected_scope="same physical DUT"
+                break
+              fi
+              if [[ -z "$fallback_run_id" ]]; then
+                mv previous-candidate previous-fallback
+                fallback_run_id="$run_id"
+              else
+                rm -rf previous-candidate
+              fi
+              continue
             fi
             echo "Skipping report from run ${run_id}: no complete board measurements"
             rm -rf previous-candidate previous-report.zip
           done
 
+          if [[ -z "$selected_run_id" && -n "$fallback_run_id" ]]; then
+            mv previous-fallback previous-report
+            selected_run_id="$fallback_run_id"
+            selected_scope="cross-DUT fallback"
+          else
+            rm -rf previous-fallback
+          fi
+
           if [[ -z "$selected_run_id" ]]; then
             echo "No previous performance report found for ${ref_name}"
+          else
+            echo "Using ${selected_scope} performance report from run ${selected_run_id}"
           fi
 
       - name: Generate performance report

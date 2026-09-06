@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       run_id:
-        description: Successful qcom-deb-images run ID; empty selects the latest
+        description: Successful qcom-deb-images run ID from the last 14 days; empty selects the latest
         required: false
         type: string
       source:

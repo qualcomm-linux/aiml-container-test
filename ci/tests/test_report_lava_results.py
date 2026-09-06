@@ -51,24 +51,45 @@ class ReportLavaResultsTest(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        messages = [
+            "AIML_PROVENANCE kernel=7.2.0-test",
+            "AIML_PROVENANCE qairt=2.47.0 "
+            f"tflite_commit={'f' * 40} configuration_version=3 threads=8 "
+            "timeout_seconds=360 op_profiling=1 outer_warmup_runs=1 "
+            "outer_sample_count=10 benchmark_warmup_runs=10 "
+            "benchmark_warmup_min_secs=1 benchmark_num_runs=100 "
+            "benchmark_min_secs=3 benchmark_max_secs=150 "
+            "label_image_warmup_runs=10 label_image_count=100",
+            "MODEL model_id=mobilenet-quant-v1-224 "
+            f"sha256={'a' * 64} path=/model.tflite",
+            "INPUT test_case_prefix=tflite-label-image "
+            f"sha256={'b' * 64} path=/input.bmp",
+        ]
+        messages.extend(
+            self.diagnostic_messages("tflite-label-image-cpu", 30.5, False)
+        )
+        messages.extend(
+            self.diagnostic_messages(
+                "tflite-benchmark-mobilenet-quant-v1-224-cpu",
+                100.25,
+                True,
+            )
+        )
+        messages.extend(
+            [
+                "LAVA_RESULT test_case_id=tflite-label-image-cpu "
+                "measurement=30.5 units=ms result=pass record_end=1",
+                "LAVA_RESULT test_case_id=tflite-label-image-gpu "
+                "result=fail record_end=1",
+                "LAVA_RESULT "
+                "test_case_id=tflite-benchmark-mobilenet-quant-v1-224-cpu "
+                "measurement=100.25 units=ms result=pass record_end=1",
+            ]
+        )
         (self.input_dir / "job-42.yaml").write_text(
             "\n".join(
-                [
-                    '- {"dt": "2026-09-03T12:00:00", "lvl": "target", '
-                    '"msg": "AIML_PROVENANCE kernel=7.2.0-test"}',
-                    '- {"dt": "2026-09-03T12:00:01", "lvl": "target", '
-                    '"msg": "AIML_PROVENANCE qairt=2.47.0 '
-                    f"tflite_commit={'f' * 40} configuration_version=1 threads=8 "
-                    'timeout_seconds=300 op_profiling=1"}',
-                    '- {"dt": "2026-09-03T12:00:02", "lvl": "target", '
-                    '"msg": "MODEL model_id=mobilenet-quant-v1-224 '
-                    f"sha256={'a' * 64} path=/model.tflite"
-                    '"}',
-                    '- {"dt": "2026-09-03T12:00:03", "lvl": "target", '
-                    '"msg": "INPUT test_case_prefix=tflite-label-image '
-                    f"sha256={'b' * 64} path=/input.bmp"
-                    '"}',
-                ]
+                f"- {json.dumps({'dt': '2026-09-03T12:00:00', 'lvl': 'target', 'msg': message})}"
+                for message in messages
             ),
             encoding="utf-8",
         )
@@ -134,6 +155,9 @@ class ReportLavaResultsTest(unittest.TestCase):
             rows = list(csv.DictReader(source))
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows[0]["model_sha256"], "a" * 64)
+        self.assertEqual(rows[0]["sample_count"], "10")
+        self.assertEqual(json.loads(rows[0]["samples"]), [30.5] * 10)
+        self.assertEqual(rows[0]["trimmed_mean"], "30.5")
         self.assertTrue(
             (self.output_dir / "raw-logs/test-board-42.yaml").is_file()
         )
@@ -144,15 +168,30 @@ class ReportLavaResultsTest(unittest.TestCase):
         results = json.loads(
             (self.output_dir / "results.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(results["schema_version"], 1)
+        self.assertEqual(results["schema_version"], 2)
         self.assertEqual(results["boards"][0]["qairt"], "2.47.0")
         self.assertEqual(results["boards"][0]["kernel"], "7.2.0-test")
+        self.assertEqual(
+            results["boards"][0]["actual_device"], "test-device-01"
+        )
         self.assertEqual(results["boards"][0]["tflite_commit"], "f" * 40)
         self.assertEqual(
-            results["boards"][0]["test_configuration"]["version"], 1
+            results["boards"][0]["test_configuration"]["version"], 3
         )
         self.assertTrue(
             results["boards"][0]["test_configuration"]["op_profiling"]
+        )
+        label_result = results["boards"][0]["results"][0]
+        self.assertEqual(len(label_result["samples"]), 10)
+        self.assertEqual(label_result["statistics"]["trimmed_mean"], 30.5)
+        self.assertEqual(label_result["statistics"]["stability"], "stable")
+        self.assertEqual(
+            label_result["telemetry"]["before"]["cpu_online"], "0-3"
+        )
+        benchmark_result = results["boards"][0]["results"][2]
+        self.assertEqual(benchmark_result["samples"][0]["inner"]["count"], 100)
+        self.assertEqual(
+            benchmark_result["samples"][0]["inner"]["median_us"], 101.0
         )
 
     def test_compares_matching_measurements_across_configuration_changes(self):
@@ -162,14 +201,15 @@ class ReportLavaResultsTest(unittest.TestCase):
             "https://lava.example.com",
         )
         previous = {
-            "schema_version": 1,
+            "schema_version": 2,
             "suite": "trixie",
             "provenance": self.provenance(),
             "boards": [
                 {
                     "id": "test-board",
+                    "actual_device": "test-device-01",
                     "test_configuration": {
-                        "version": 0,
+                        "version": 3,
                         "threads": 4,
                         "timeout_seconds": 120,
                         "op_profiling": False,
@@ -199,12 +239,192 @@ class ReportLavaResultsTest(unittest.TestCase):
                 boards[0], previous["boards"][0]
             ),
             [
-                "version: `0` -> `1`",
                 "threads: `4` -> `8`",
-                "timeout: `120 s` -> `300 s`",
+                "timeout: `120 s` -> `360 s`",
                 "operator profiling: `disabled` -> `enabled`",
+                "outer warm-up runs: `N/A` -> `1`",
+                "outer sample count: `N/A` -> `10`",
+                "benchmark warm-up runs: `N/A` -> `10`",
+                "benchmark warm-up minimum: `N/A` -> `1 s`",
+                "benchmark runs: `N/A` -> `100`",
+                "benchmark minimum: `N/A` -> `3 s`",
+                "benchmark maximum: `N/A` -> `150 s`",
+                "label-image warm-up runs: `N/A` -> `10`",
+                "label-image count: `N/A` -> `100`",
             ],
         )
+        self.assertEqual(
+            boards[0]["results"][0]["comparison_scope"], "same-dut"
+        )
+
+    def test_old_single_sample_baseline_is_non_comparable(self):
+        boards = REPORT.load_jobs(
+            self.input_dir,
+            REPORT.load_board_map(self.boards_file),
+            "https://lava.example.com",
+        )
+        previous = {
+            "schema_version": 1,
+            "suite": "trixie",
+            "provenance": self.provenance(),
+            "boards": [
+                {
+                    "id": "test-board",
+                    "actual_device": "test-device-01",
+                    "test_configuration": {"version": 3},
+                    "results": [
+                        {
+                            **boards[0]["results"][0],
+                            "measurement": 25.0,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        REPORT.add_comparisons(boards, previous, "trixie")
+
+        result = boards[0]["results"][0]
+        self.assertEqual(result["comparison_status"], "method-changed")
+        self.assertIsNone(result["previous_measurement"])
+        self.assertIsNone(result["change_percent"])
+
+    def test_cross_dut_fallback_is_visibly_labeled(self):
+        boards = REPORT.load_jobs(
+            self.input_dir,
+            REPORT.load_board_map(self.boards_file),
+            "https://lava.example.com",
+        )
+        previous = {
+            "schema_version": 2,
+            "suite": "trixie",
+            "provenance": self.provenance(),
+            "boards": [
+                {
+                    "id": "test-board",
+                    "actual_device": "other-device-99",
+                    "test_configuration": boards[0]["test_configuration"],
+                    "results": [
+                        {
+                            **boards[0]["results"][0],
+                            "measurement": 25.0,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        previous_boards = REPORT.add_comparisons(boards, previous, "trixie")
+        summary = self.root / "cross-dut.md"
+        REPORT.write_summary(
+            summary,
+            boards,
+            self.provenance(),
+            previous,
+            previous_boards,
+        )
+
+        result = boards[0]["results"][0]
+        self.assertEqual(result["comparison_scope"], "cross-dut")
+        self.assertEqual(result["comparison_status"], "compared")
+        self.assertIn("**cross-DUT**", summary.read_text(encoding="utf-8"))
+
+    def test_incomplete_samples_and_measurement_mismatch_are_rejected(self):
+        log_path = self.input_dir / "job-42.yaml"
+        original = log_path.read_text(encoding="utf-8")
+        log_path.write_text(
+            "\n".join(
+                line
+                for line in original.splitlines()
+                if "index=10 " not in line
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "has 9 samples"):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
+
+        log_path.write_text(original, encoding="utf-8")
+        tests_path = self.input_dir / "job-42-tests.csv"
+        contents = tests_path.read_text(encoding="utf-8")
+        tests_path.write_text(
+            contents.replace("30.5,ms", "31.5,ms", 1),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "does not match trimmed mean"):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
+
+    def test_prefixed_child_diagnostics_cannot_impersonate_records(self):
+        log_path = self.input_dir / "job-42.yaml"
+        entry = {
+            "dt": "2026-09-03T12:00:04",
+            "lvl": "target",
+            "msg": (
+                "TFLITE_OUTPUT AIML_SAMPLE "
+                "test_case_id=tflite-label-image-cpu index=11 "
+                "measurement=999 units=ms"
+            ),
+        }
+        with log_path.open("a", encoding="utf-8") as destination:
+            destination.write(f"\n- {json.dumps(entry)}")
+
+        boards = REPORT.load_jobs(
+            self.input_dir,
+            REPORT.load_board_map(self.boards_file),
+            "https://lava.example.com",
+        )
+
+        self.assertEqual(len(boards[0]["results"][0]["samples"]), 10)
+
+    def test_raw_result_parser_accepts_protocol_carriage_return(self):
+        results = REPORT.parse_lava_results(
+            [
+                "LAVA_RESULT test_case_id=tflite-label-image-cpu "
+                "measurement=30.5 units=ms result=pass record_end=1\r"
+            ]
+        )
+
+        self.assertEqual(results["tflite-label-image-cpu"]["result"], "pass")
+
+    def test_reads_old_report_for_context(self):
+        previous_path = self.root / "previous.json"
+        previous_path.write_text(
+            json.dumps({"schema_version": 1, "boards": []}),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(REPORT.read_previous(previous_path)["schema_version"], 1)
+
+    def test_statistics_use_sample_variance_and_flag_instability(self):
+        statistics = REPORT.calculate_statistics(
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        )
+
+        self.assertEqual(statistics["discarded_low"], 1)
+        self.assertEqual(statistics["discarded_high"], 10)
+        self.assertEqual(statistics["raw_mean"], 5.5)
+        self.assertEqual(statistics["trimmed_mean"], 5.5)
+        self.assertEqual(statistics["median"], 5.5)
+        self.assertEqual(statistics["mad"], 2.5)
+        self.assertAlmostEqual(statistics["raw_variance"], 55 / 6)
+        self.assertEqual(statistics["trimmed_variance"], 6)
+
+        message = (
+            "AIML_STATS test_case_id=case count=10 discarded_low=1 "
+            "discarded_high=10 raw_mean=5.5 trimmed_mean=5.5 median=5.5 "
+            "mad=2.5 raw_variance=9.166666667 raw_stddev=3.027650354 "
+            "raw_cv=0.550481883 trimmed_variance=6 "
+            "trimmed_stddev=2.449489743 trimmed_cv=0.445361771 units=ms"
+        )
+        parsed = REPORT.parse_diagnostics([message])
+        self.assertEqual(parsed["case"]["statistics"]["stability"], "unstable")
 
     def test_reports_when_aiml_tests_did_not_run(self):
         with (self.input_dir / "job-42-tests.csv").open(
@@ -216,11 +436,52 @@ class ReportLavaResultsTest(unittest.TestCase):
             )
             writer.writeheader()
 
-        self.run_report()
+        with self.assertRaisesRegex(
+            ValueError, "missing=.*tflite-label-image-cpu"
+        ):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
 
-        summary = (self.output_dir / "summary.md").read_text(encoding="utf-8")
-        self.assertIn("**Tests did not run.**", summary)
-        self.assertNotIn("| N/A | N/A | N/A |", summary)
+    def test_rejects_lava_api_omissions(self):
+        tests_path = self.input_dir / "job-42-tests.csv"
+        with tests_path.open(newline="", encoding="utf-8") as source:
+            reader = csv.DictReader(source)
+            rows = list(reader)
+            fieldnames = reader.fieldnames
+        with tests_path.open("w", newline="", encoding="utf-8") as destination:
+            writer = csv.DictWriter(destination, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows[1:])
+
+        with self.assertRaisesRegex(
+            ValueError, "missing=.*tflite-label-image-cpu"
+        ):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
+
+    def test_rejects_missing_current_configuration_version(self):
+        log_path = self.input_dir / "job-42.yaml"
+        log_path.write_text(
+            log_path.read_text(encoding="utf-8").replace(
+                " configuration_version=3", ""
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, "configuration version None; expected 3"
+        ):
+            REPORT.load_jobs(
+                self.input_dir,
+                REPORT.load_board_map(self.boards_file),
+                "https://lava.example.com",
+            )
 
     def test_uses_only_latest_lava_retry_results(self):
         (self.input_dir / "job-41.json").write_text(
@@ -359,6 +620,49 @@ class ReportLavaResultsTest(unittest.TestCase):
             ],
             check=True,
         )
+
+    @staticmethod
+    def diagnostic_messages(test_case_id, measurement, benchmark):
+        inner = (
+            "inner_count=100 inner_min_us=100 inner_max_us=102 "
+            "inner_avg_us=101 inner_stddev_us=1 inner_median_us=101 "
+            "inner_p5_us=100 inner_p95_us=102"
+            if benchmark
+            else "inner_count=100 inner_min_us=na inner_max_us=na "
+            "inner_avg_us=na inner_stddev_us=na inner_median_us=na "
+            "inner_p5_us=na inner_p95_us=na"
+        )
+        messages = [
+            f"AIML_TELEMETRY test_case_id={test_case_id} phase=before "
+            "cpu_online=0-3 scaling_governors=policy0:performance "
+            "scaling_current_khz=policy0:1800000 "
+            "policy_frequencies_khz=policy0:300000-1800000 "
+            "load=0.10,0.20,0.30 thermal_millicelsius=thermal_zone0:cpu:42000",
+            f"AIML_WARMUP test_case_id={test_case_id} "
+            f"measurement={measurement} units=ms {inner}",
+        ]
+        messages.extend(
+            f"AIML_SAMPLE test_case_id={test_case_id} index={index} "
+            f"measurement={measurement} units=ms {inner}"
+            for index in range(1, 11)
+        )
+        messages.extend(
+            [
+                f"AIML_TELEMETRY test_case_id={test_case_id} phase=after "
+                "cpu_online=0-3 scaling_governors=policy0:performance "
+                "scaling_current_khz=policy0:1800000 "
+                "policy_frequencies_khz=policy0:300000-1800000 "
+                "load=0.20,0.20,0.30 "
+                "thermal_millicelsius=thermal_zone0:cpu:43000",
+                f"AIML_STATS test_case_id={test_case_id} count=10 "
+                f"discarded_low={measurement} discarded_high={measurement} "
+                f"raw_mean={measurement} trimmed_mean={measurement} "
+                f"median={measurement} mad=0 raw_variance=0 raw_stddev=0 "
+                "raw_cv=0 trimmed_variance=0 trimmed_stddev=0 trimmed_cv=0 "
+                "units=ms",
+            ]
+        )
+        return messages
 
     @staticmethod
     def provenance():
