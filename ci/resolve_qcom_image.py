@@ -20,7 +20,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 REPOSITORY = "qualcomm-linux/qcom-deb-images"
 ARTIFACT_HOST = "qli-prod-artifacts.qualcomm.com"
 ARTIFACT_ROOT = f"/qcom-prd-gh-artifacts/{REPOSITORY}/"
-MAX_AGE = timedelta(days=7)
+MAX_AGE = timedelta(days=14)
 MAX_POINTER_ARCHIVE_SIZE = 64 * 1024
 MAX_POINTER_SIZE = 4096
 SOURCE_CONFIG = {
@@ -413,7 +413,8 @@ def resolve(source, suite, requested_run_id, client, probe=probe_image, now=None
 
     detail = f": {'; '.join(failures)}" if failures else ""
     raise ResolutionError(
-        f"no recent trusted qcom-deb-images {source} run has a valid {suite} image"
+        f"no trusted qcom-deb-images {source} run from the last "
+        f"{MAX_AGE.days} days has a valid {suite} image"
         f"{detail}"
     )
 

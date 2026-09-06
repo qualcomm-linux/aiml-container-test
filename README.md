@@ -55,6 +55,9 @@ GPU device is unavailable.
 
 CI tracks TensorFlow Lite latency per board in LAVA. Measurements and comparisons
 are published with each [Daily LAVA workflow][daily] run.
+LAVA image resolution accepts only successful trusted `qcom-deb-images` workflow
+runs from `main` that are no more than 14 days old; all artifact pointer and image
+validation remains mandatory.
 
 ## License
 

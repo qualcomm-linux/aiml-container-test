@@ -6,7 +6,7 @@ import importlib.util
 import io
 import unittest
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / "resolve_qcom_image.py"
@@ -75,6 +75,47 @@ class FakeClient:
 
 
 class ResolveQcomImageTest(unittest.TestCase):
+    def test_accepts_runs_within_and_exactly_at_fourteen_day_boundary(self):
+        for age in (timedelta(days=14), timedelta(days=14) - timedelta(seconds=1)):
+            with self.subTest(age=age):
+                run = run_fixture(
+                    123,
+                    created_at=(NOW - age).isoformat().replace("+00:00", "Z"),
+                )
+
+                self.assertEqual(
+                    RESOLVER.validate_run(run, "arduino", NOW),
+                    int(age.total_seconds() // 3600),
+                )
+
+    def test_rejects_run_older_than_fourteen_days(self):
+        run = run_fixture(
+            123,
+            created_at=(
+                NOW - timedelta(days=14) - timedelta(seconds=1)
+            ).isoformat().replace("+00:00", "Z"),
+        )
+
+        with self.assertRaisesRegex(RESOLVER.ResolutionError, "336 hours old"):
+            RESOLVER.validate_run(run, "arduino", NOW)
+
+    def test_age_extension_preserves_trusted_run_requirements(self):
+        invalid_values = {
+            "head_repository": {"full_name": "example/qcom-deb-images"},
+            "path": ".github/workflows/build.yml",
+            "event": "workflow_dispatch",
+            "head_branch": "feature",
+            "conclusion": "failure",
+        }
+        for field, value in invalid_values.items():
+            with self.subTest(field=field):
+                run = run_fixture(123)
+                run[field] = value
+                with self.assertRaisesRegex(
+                    RESOLVER.ResolutionError, "does not match the trusted"
+                ):
+                    RESOLVER.validate_run(run, "arduino", NOW)
+
     def test_rerun_uses_publication_attempt_from_pointer(self):
         run = run_fixture(33846066976, attempt=2)
         artifact = artifact_fixture(9928371450, "2026-09-04T07:57:55Z")

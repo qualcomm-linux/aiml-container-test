@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       qcom_build_run_id:
-        description: Successful run ID for the selected qcom-deb-images source; empty selects the latest
+        description: Successful run ID from the last 14 days for the selected qcom-deb-images source; empty selects the latest
         required: false
         type: string
       image_source:
