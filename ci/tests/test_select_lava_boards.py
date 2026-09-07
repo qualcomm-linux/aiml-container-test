@@ -63,6 +63,14 @@ class SelectLavaBoardsTest(unittest.TestCase):
             SELECTOR.select_boards(boards, "arduino", ""),
             ["monaco-arduino-monza", "qrb2210-arduino-imola"],
         )
+        self.assertEqual(
+            SELECTOR.select_boards(boards, "generic", ""),
+            [
+                "qrb2210-rb1",
+                "qcs6490-rb3gen2-vision-kit",
+                "glymur-crd",
+            ],
+        )
 
     def test_rejects_template_device_type_mismatch(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

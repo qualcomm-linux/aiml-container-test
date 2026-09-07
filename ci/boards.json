@@ -16,6 +16,13 @@
         "qcs6490-rb3gen2-vision-kit"
       ]
     },
+    "glymur-crd": {
+      "display_name": "Glymur CRD",
+      "image_source": "generic",
+      "device_types": [
+        "glymur-crd"
+      ]
+    },
     "monaco-arduino-monza": {
       "display_name": "Arduino VENTUNO Q",
       "image_source": "arduino",

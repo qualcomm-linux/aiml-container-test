@@ -25,7 +25,11 @@ class RouteDailyInputsTest(unittest.TestCase):
         self.assertEqual(outputs["arduino_enabled"], "true")
         self.assertEqual(
             json.loads(outputs["generic_boards"]),
-            ["qrb2210-rb1", "qcs6490-rb3gen2-vision-kit"],
+            [
+                "qrb2210-rb1",
+                "qcs6490-rb3gen2-vision-kit",
+                "glymur-crd",
+            ],
         )
         self.assertEqual(
             json.loads(outputs["arduino_boards"]),
