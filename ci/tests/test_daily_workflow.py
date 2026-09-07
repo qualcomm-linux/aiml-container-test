@@ -126,6 +126,13 @@ class DailyWorkflowTest(unittest.TestCase):
         self.assertIn(expected, job_block(self.push, "compare-performance"))
         self.assertIn(expected, job_block(self.daily, "compare-performance"))
 
+    def test_push_runs_glymur_on_the_testing_branch(self):
+        self.assertIn("branches: [main, ci-staging]", self.push)
+        self.assertIn(
+            """      boards_include: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit","glymur-crd"]'""",
+            job_block(self.push, "test-generic"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

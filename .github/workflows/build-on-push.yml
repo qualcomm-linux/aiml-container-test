@@ -46,7 +46,7 @@ jobs:
     secrets:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
-      boards_include: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit"]'
+      boards_include: '["qrb2210-rb1","qcs6490-rb3gen2-vision-kit","glymur-crd"]'
       build_url: ${{ needs.resolve-qcom-image-generic.outputs.build_url }}
       container_digest: ${{ needs.build-daily.outputs.container_digest }}
       image_source: generic
