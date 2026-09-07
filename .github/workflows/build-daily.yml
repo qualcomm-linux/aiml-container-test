@@ -6,19 +6,20 @@ on:
   workflow_dispatch:
     inputs:
       qcom_build_run_id:
-        description: Successful run ID from the last 14 days for the selected qcom-deb-images source; empty selects the latest
+        description: Successful run ID from the last 14 days for one selected qcom-deb-images source; empty selects the latest
         required: false
         type: string
       image_source:
         description: qcom-deb-images workflow family
         required: true
-        default: generic
+        default: all
         type: choice
         options:
+          - all
           - generic
           - arduino
       boards_include:
-        description: JSON array of LAVA board names; empty selects every board for the image source
+        description: JSON array of LAVA board names; empty selects every board for the selected image source(s)
         required: false
         default: ''
         type: string
@@ -51,20 +52,68 @@ jobs:
             exit 1
           fi
 
-  resolve-qcom-image:
+  configure:
+    name: Configure Daily scopes
     needs: validate-ref
-    if: github.repository == 'qualcomm-linux/aiml-container-test'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      arduino_boards: ${{ steps.route.outputs.arduino_boards }}
+      arduino_enabled: ${{ steps.route.outputs.arduino_enabled }}
+      arduino_run_id: ${{ steps.route.outputs.arduino_run_id }}
+      generic_boards: ${{ steps.route.outputs.generic_boards }}
+      generic_enabled: ${{ steps.route.outputs.generic_enabled }}
+      generic_run_id: ${{ steps.route.outputs.generic_run_id }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate and route inputs
+        id: route
+        env:
+          BOARDS_INCLUDE: ${{ inputs.boards_include || '' }}
+          IMAGE_SOURCE: ${{ inputs.image_source || 'all' }}
+          QCOM_BUILD_RUN_ID: ${{ inputs.qcom_build_run_id || '' }}
+        run: |
+          python3 ci/route_daily_inputs.py \
+            --boards ci/boards.json \
+            --image-source "$IMAGE_SOURCE" \
+            --run-id "$QCOM_BUILD_RUN_ID" \
+            --include "$BOARDS_INCLUDE" \
+            --github-output "$GITHUB_OUTPUT"
+
+  resolve-qcom-image-generic:
+    name: Resolve generic qcom-deb image
+    needs: configure
+    if: ${{ needs.configure.outputs.generic_enabled == 'true' && github.repository == 'qualcomm-linux/aiml-container-test' }}
     uses: ./.github/workflows/resolve-qcom-image.yml
     permissions:
       contents: read
     with:
-      run_id: ${{ inputs.qcom_build_run_id }}
-      source: ${{ inputs.image_source || 'generic' }}
+      run_id: ${{ needs.configure.outputs.generic_run_id }}
+      source: generic
+      suite: ${{ inputs.suite || 'trixie' }}
+
+  resolve-qcom-image-arduino:
+    name: Resolve Arduino qcom-deb image
+    needs: configure
+    if: ${{ needs.configure.outputs.arduino_enabled == 'true' && github.repository == 'qualcomm-linux/aiml-container-test' }}
+    uses: ./.github/workflows/resolve-qcom-image.yml
+    permissions:
+      contents: read
+    with:
+      run_id: ${{ needs.configure.outputs.arduino_run_id }}
+      source: arduino
       suite: ${{ inputs.suite || 'trixie' }}
 
   build-daily:
     name: Build AIML container
-    needs: resolve-qcom-image
+    needs: configure
+    if: github.repository == 'qualcomm-linux/aiml-container-test'
     uses: ./.github/workflows/docker_build.yml
     permissions:
       contents: read
@@ -72,16 +121,19 @@ jobs:
       create_test_url: true
 
   schema-check:
+    needs: configure
     uses: ./.github/workflows/lava-schema-check.yml
     permissions:
       contents: read
 
-  test-daily:
-    name: Test AIML container in LAVA
+  test-generic:
+    name: Test AIML container with generic images
     needs:
-      - resolve-qcom-image
+      - configure
+      - resolve-qcom-image-generic
       - build-daily
       - schema-check
+    if: ${{ needs.configure.outputs.generic_enabled == 'true' }}
     uses: ./.github/workflows/lava-test.yml
     permissions:
       actions: read
@@ -91,16 +143,61 @@ jobs:
     secrets:
       LAVATOKEN: ${{ secrets.LAVATOKEN }}
     with:
-      build_url: ${{ needs.resolve-qcom-image.outputs.build_url }}
-      boards_include: ${{ inputs.boards_include || '' }}
+      build_url: ${{ needs.resolve-qcom-image-generic.outputs.build_url }}
+      boards_include: ${{ needs.configure.outputs.generic_boards }}
       container_digest: ${{ needs.build-daily.outputs.container_digest }}
-      image_source: ${{ inputs.image_source || 'generic' }}
-      qcom_event: ${{ needs.resolve-qcom-image.outputs.event }}
-      qcom_ref: ${{ needs.resolve-qcom-image.outputs.ref }}
-      qcom_run_attempt: ${{ needs.resolve-qcom-image.outputs.run_attempt }}
-      qcom_publication_attempt: ${{ needs.resolve-qcom-image.outputs.publication_attempt }}
-      qcom_run_id: ${{ needs.resolve-qcom-image.outputs.run_id }}
-      qcom_sha: ${{ needs.resolve-qcom-image.outputs.sha }}
-      qcom_workflow: ${{ needs.resolve-qcom-image.outputs.workflow }}
-      report_scope: ${{ inputs.image_source || 'generic' }}
+      image_source: generic
+      qcom_event: ${{ needs.resolve-qcom-image-generic.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image-generic.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image-generic.outputs.run_attempt }}
+      qcom_publication_attempt: ${{ needs.resolve-qcom-image-generic.outputs.publication_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image-generic.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image-generic.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image-generic.outputs.workflow }}
+      report_scope: generic
+      suite: ${{ inputs.suite || 'trixie' }}
+
+  test-arduino:
+    name: Test AIML container with Arduino images
+    needs:
+      - configure
+      - resolve-qcom-image-arduino
+      - build-daily
+      - schema-check
+    if: ${{ needs.configure.outputs.arduino_enabled == 'true' }}
+    uses: ./.github/workflows/lava-test.yml
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      packages: read
+    secrets:
+      LAVATOKEN: ${{ secrets.LAVATOKEN }}
+    with:
+      build_url: ${{ needs.resolve-qcom-image-arduino.outputs.build_url }}
+      boards_include: ${{ needs.configure.outputs.arduino_boards }}
+      container_digest: ${{ needs.build-daily.outputs.container_digest }}
+      image_source: arduino
+      qcom_event: ${{ needs.resolve-qcom-image-arduino.outputs.event }}
+      qcom_ref: ${{ needs.resolve-qcom-image-arduino.outputs.ref }}
+      qcom_run_attempt: ${{ needs.resolve-qcom-image-arduino.outputs.run_attempt }}
+      qcom_publication_attempt: ${{ needs.resolve-qcom-image-arduino.outputs.publication_attempt }}
+      qcom_run_id: ${{ needs.resolve-qcom-image-arduino.outputs.run_id }}
+      qcom_sha: ${{ needs.resolve-qcom-image-arduino.outputs.sha }}
+      qcom_workflow: ${{ needs.resolve-qcom-image-arduino.outputs.workflow }}
+      report_scope: arduino
+      suite: ${{ inputs.suite || 'trixie' }}
+
+  compare-performance:
+    name: Compare board performance
+    needs:
+      - configure
+      - test-generic
+      - test-arduino
+    if: ${{ always() && needs.configure.outputs.generic_enabled == 'true' && needs.configure.outputs.arduino_enabled == 'true' && needs.test-generic.result == 'success' && needs.test-arduino.result == 'success' }}
+    uses: ./.github/workflows/compare-performance.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
       suite: ${{ inputs.suite || 'trixie' }}
