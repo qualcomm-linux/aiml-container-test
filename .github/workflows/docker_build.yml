@@ -1,7 +1,7 @@
 name: Build OCI container images
 
-env:
- BUILD_REFERENCE: ${{ github.head_ref || github.ref_name }} 
+permissions:
+  contents: read
 
 on:
   workflow_call:
@@ -31,7 +31,7 @@ jobs:
     name: Build and upload container image(s)
     if: github.repository_owner == 'qualcomm-linux'
     outputs:
-      url: ${{ steps.upload_artifacts_s3.outputs.url }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
+      url: ${{ steps.upload_artifacts_s3.outputs.url }}/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
       container_digest: ${{ steps.container_metadata.outputs.digest }}
     runs-on: [ self-hosted, qcom-u2404, amd64 ]
     steps:
@@ -39,6 +39,104 @@ jobs:
       uses: actions/checkout@v6
       with:
         persist-credentials: false
+
+    - name: Derive and validate build identifier
+      id: build_identifier
+      env:
+        EXPECTED_SHA: ${{ github.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+      run: |
+        set -euo pipefail
+
+        fail() {
+          echo "::error title=Invalid build identity::$1"
+          exit 1
+        }
+
+        validate_build_identifier() {
+          local identifier=$1
+          if (( ${#identifier} > 128 )); then
+            fail "build identifier exceeds the 128-character Docker tag limit"
+          fi
+          if [[ "$identifier" == */* || "$identifier" == "." || "$identifier" == ".." ]]; then
+            fail "build identifier is not safe as a filename component"
+          fi
+          if [[ ! "$identifier" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+            fail "build identifier is not a valid Docker tag"
+          fi
+        }
+
+        if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          fail "github.sha must be exactly 40 lowercase hexadecimal characters"
+        fi
+        checkout_sha=$(git rev-parse HEAD)
+        if [[ ! "$checkout_sha" =~ ^[0-9a-f]{40}$ ]]; then
+          fail "checked-out HEAD must be exactly 40 lowercase hexadecimal characters"
+        fi
+        if [[ "$checkout_sha" != "$EXPECTED_SHA" ]]; then
+          fail "checked-out HEAD does not match github.sha"
+        fi
+
+        case "$GITHUB_EVENT_NAME" in
+          pull_request)
+            if [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              build_identifier="pr-${PR_NUMBER}"
+            else
+              fail "pull_request event has a missing or malformed pull request number"
+            fi
+            expected_ref="refs/pull/${PR_NUMBER}/merge"
+            if [[ "$GITHUB_REF_TYPE" != "branch" || "$GITHUB_REF" != "$expected_ref" ]]; then
+              fail "pull_request event has unsupported ref '$GITHUB_REF' (expected '$expected_ref')"
+            fi
+            if [[ -z "$SOURCE_REF" ]]; then
+              fail "pull_request event is missing its source branch"
+            fi
+            ;;
+          push)
+            if [[ "$GITHUB_REF_TYPE" != "branch" || "$GITHUB_REF" != "refs/heads/${GITHUB_REF_NAME}" ]]; then
+              fail "push event has unsupported ref '$GITHUB_REF'"
+            fi
+            build_identifier="branch-${GITHUB_REF_NAME}"
+            validate_build_identifier "$build_identifier"
+            case "$GITHUB_REF_NAME" in
+              main|ci-staging) ;;
+              *) fail "push event uses unsupported branch '$GITHUB_REF_NAME'" ;;
+            esac
+            ;;
+          schedule)
+            if [[ "$GITHUB_REF_TYPE" != "branch" || "$GITHUB_REF" != "refs/heads/main" || "$GITHUB_REF_NAME" != "main" ]]; then
+              fail "schedule event must run from branch 'main'"
+            fi
+            build_identifier="branch-main"
+            ;;
+          workflow_dispatch)
+            if [[ "$GITHUB_REF_TYPE" != "branch" || "$GITHUB_REF" != "refs/heads/${GITHUB_REF_NAME}" ]]; then
+              fail "workflow_dispatch event has unsupported ref '$GITHUB_REF'"
+            fi
+            build_identifier="branch-${GITHUB_REF_NAME}"
+            validate_build_identifier "$build_identifier"
+            case "$GITHUB_REF_NAME" in
+              main|ci-staging) ;;
+              *) fail "workflow_dispatch event uses unsupported branch '$GITHUB_REF_NAME'" ;;
+            esac
+            ;;
+          *)
+            fail "unsupported workflow event '$GITHUB_EVENT_NAME'"
+            ;;
+        esac
+
+        validate_build_identifier "$build_identifier"
+        printf 'identifier=%s\n' "$build_identifier" >>"$GITHUB_OUTPUT"
+        printf 'Build identifier: %s\n' "$build_identifier"
+        printf 'Build event: %s\n' "$GITHUB_EVENT_NAME"
+        printf 'Build Git ref: %s\n' "$GITHUB_REF"
+        printf 'Build source branch: %s\n' "$SOURCE_REF"
+        printf 'Build pull request: %s\n' "${PR_NUMBER:-none}"
+        printf 'Build commit: %s\n' "$EXPECTED_SHA"
+        printf 'Workflow run ID: %s (attempt %s)\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+        printf 'Workflow run URL: %s/%s/actions/runs/%s\n' \
+          "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
 
     - name: Set up Docker
       uses: docker/setup-docker-action@v5
@@ -68,33 +166,67 @@ jobs:
       with:
         push: false
         platforms: linux/arm64
-        tags: aiml-container-test:${{ env.BUILD_REFERENCE }}
+        tags: aiml-container-test:${{ steps.build_identifier.outputs.identifier }}
+        labels: |
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.ref.name=${{ github.head_ref || github.ref_name }}
+          io.github.qualcomm-linux.aiml-container.event=${{ github.event_name }}
+          io.github.qualcomm-linux.aiml-container.git-ref=${{ github.ref }}
+          io.github.qualcomm-linux.aiml-container.pull-request=${{ github.event.pull_request.number || 'none' }}
+          io.github.qualcomm-linux.aiml-container.run-id=${{ github.run_id }}
+          io.github.qualcomm-linux.aiml-container.run-attempt=${{ github.run_attempt }}
+          io.github.qualcomm-linux.aiml-container.run-url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         target: fastrpc-deploy
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        outputs: type=docker,dest=${{ runner.temp }}/aiml-container-${{ env.BUILD_REFERENCE }}.tar
+        outputs: type=docker,dest=${{ runner.temp }}/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
 
     - name: Record container image digest
       id: container_metadata
+      env:
+        IMAGE_TAR: ${{ runner.temp }}/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
       run: |
         set -euo pipefail
-        image_tar="${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar"
-        config_file=$(tar -xOf "$image_tar" manifest.json | jq -er '.[0].Config')
-        config_digest=$(tar -xOf "$image_tar" "$config_file" |
+        config_file=$(tar -xOf "$IMAGE_TAR" manifest.json | jq -er '.[0].Config')
+        config_digest=$(tar -xOf "$IMAGE_TAR" "$config_file" |
           sha256sum | awk '{ print $1 }')
         [[ "$config_digest" =~ ^[0-9a-f]{64}$ ]]
         echo "digest=sha256:${config_digest}" >>"$GITHUB_OUTPUT"
 
     - name: Stage OCI artifacts for publishing
+      env:
+        BUILD_IDENTIFIER: ${{ steps.build_identifier.outputs.identifier }}
+        EVENT_NAME: ${{ github.event_name }}
+        EXPECTED_SHA: ${{ github.sha }}
+        GIT_REF: ${{ github.ref }}
+        IMAGE_TAR: ${{ runner.temp }}/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+        STAGED_IMAGE_TAR: OCI-artifacts/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
       run: |
         set -euxo pipefail
         mkdir -v OCI-artifacts
-        cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" OCI-artifacts/
+        cp -v "$IMAGE_TAR" "$STAGED_IMAGE_TAR"
+        {
+          printf 'identifier=%s\n' "$BUILD_IDENTIFIER"
+          printf 'event=%s\n' "$EVENT_NAME"
+          printf 'git_ref=%s\n' "$GIT_REF"
+          printf 'source_ref=%s\n' "$SOURCE_REF"
+          printf 'pull_request=%s\n' "${PR_NUMBER:-none}"
+          printf 'github_sha=%s\n' "$EXPECTED_SHA"
+          printf 'run_id=%s\n' "$RUN_ID"
+          printf 'run_attempt=%s\n' "$RUN_ATTEMPT"
+          printf 'run_url=%s\n' "$RUN_URL"
+        } >OCI-artifacts/build-provenance.txt
 
-        repository="${{ runner.temp }}/aiml-test-repository"
+        repository="${RUNNER_TEMP}/aiml-test-repository"
         rm -rf -- "$repository"
         mkdir -v "$repository"
-        cp -v "${{ runner.temp }}/aiml-container-${BUILD_REFERENCE}.tar" "$repository/aiml-container.tar"
+        cp -v "$IMAGE_TAR" "$repository/aiml-container.tar"
         cp -v ci/test-definitions/aiml-container-smoke.yaml "$repository/"
         cdi_generator_commit=54c3cac049cee5afb1b983596d5dda6802b0d568
         curl --fail --location --retry 3 \
@@ -120,7 +252,17 @@ jobs:
       with:
         push: false
         platforms: linux/arm64
-        tags: ghcr.io/qualcomm-linux/aiml-container-test:${{ env.BUILD_REFERENCE }}
+        tags: ghcr.io/qualcomm-linux/aiml-container-test:${{ steps.build_identifier.outputs.identifier }}
+        labels: |
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.ref.name=${{ github.head_ref || github.ref_name }}
+          io.github.qualcomm-linux.aiml-container.event=${{ github.event_name }}
+          io.github.qualcomm-linux.aiml-container.git-ref=${{ github.ref }}
+          io.github.qualcomm-linux.aiml-container.pull-request=${{ github.event.pull_request.number || 'none' }}
+          io.github.qualcomm-linux.aiml-container.run-id=${{ github.run_id }}
+          io.github.qualcomm-linux.aiml-container.run-attempt=${{ github.run_attempt }}
+          io.github.qualcomm-linux.aiml-container.run-url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         target: fastrpc-deploy
         cache-from: type=gha
         cache-to: type=gha,mode=max
@@ -134,6 +276,9 @@ jobs:
         curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh
 
     - name: Generate SBOMs with Syft
+      env:
+        BUILD_IDENTIFIER: ${{ steps.build_identifier.outputs.identifier }}
+        STAGED_IMAGE_TAR: OCI-artifacts/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
       run: |
         set -ux
         bin/syft --version
@@ -146,9 +291,9 @@ jobs:
             --parallelism `nproc` \
             --select-catalogers "+dpkg-db-cataloger,+python-package-cataloger" \
             --source-name aiml-container \
-            --source-version "${BUILD_REFERENCE}" \
+            --source-version "${BUILD_IDENTIFIER}" \
             -v \
-            "OCI-artifacts/aiml-container-${BUILD_REFERENCE}.tar"
+            "$STAGED_IMAGE_TAR"
 
     - name: Stage SBOMs for publishing
       run: |
@@ -192,7 +337,7 @@ jobs:
           https://*) ;;
           *) echo "::error::AWS did not return an HTTPS URL"; exit 1 ;;
         esac
-        printf '%s\n' "$url" >"${{ runner.temp }}/container_url"
+        printf '%s\n' "$url" >"${RUNNER_TEMP}/container_url"
 
     - name: Upload short-lived LAVA download URL
       if: inputs.create_test_url
