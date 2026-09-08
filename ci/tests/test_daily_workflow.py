@@ -2,9 +2,9 @@
 # Copyright (c) 2026 Qualcomm Technologies, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
+import json
 import unittest
 from pathlib import Path
-
 
 ROOT = Path(__file__).parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -31,6 +31,7 @@ class DailyWorkflowTest(unittest.TestCase):
         cls.daily = load_workflow("build-daily.yml")
         cls.compare = load_workflow("compare-performance.yml")
         cls.push = load_workflow("build-on-push.yml")
+        cls.lava = load_workflow("lava-test.yml")
 
     def test_schedule_routes_as_all_and_dispatch_preserves_each_family(self):
         self.assertIn(
@@ -71,13 +72,22 @@ class DailyWorkflowTest(unittest.TestCase):
             job_block(self.daily, "resolve-qcom-image-arduino"),
         )
 
-    def test_scopes_are_independent_and_share_one_container(self):
+    def test_generic_invocation_aggregates_all_family_scopes(self):
         generic = job_block(self.daily, "test-generic")
         arduino = job_block(self.daily, "test-arduino")
-        self.assertNotIn("resolve-qcom-image-arduino", generic)
+        self.assertIn("name: Test AIML container with generic images", generic)
         self.assertNotIn("test-arduino", generic)
-        self.assertNotIn("resolve-qcom-image-generic", arduino)
         self.assertNotIn("test-generic", arduino)
+        self.assertIn("resolve-qcom-image-arduino", generic)
+        self.assertIn("additional_report_scope:", generic)
+        self.assertIn("&& 'arduino' || ''", generic)
+        self.assertIn(
+            "needs.configure.outputs.arduino_enabled == 'true'",
+            generic,
+        )
+        self.assertIn(
+            "needs.configure.outputs.generic_enabled != 'true'", arduino
+        )
         digest = (
             "container_digest: "
             "${{ needs.build-daily.outputs.container_digest }}"
@@ -85,12 +95,45 @@ class DailyWorkflowTest(unittest.TestCase):
         self.assertIn(digest, generic)
         self.assertIn(digest, arduino)
 
-    def test_scopes_publish_distinct_lava_reports(self):
+    def test_canonical_generic_summary_aggregates_all_four_board_reports(self):
+        publish = job_block(self.lava, "publish-test-results")
+        self.assertIn("name: Publish Tests Results", publish)
+        self.assertIn("needs: submit-job", publish)
+        self.assertIn("Report scope: ${scope}", publish)
         self.assertIn(
-            "report_scope: generic", job_block(self.daily, "test-generic")
+            'cat "performance-results/$scope/summary.md" '
+            '>>"$GITHUB_STEP_SUMMARY"',
+            publish,
         )
+        self.assertIn("LAVA results (generic)", publish)
+        self.assertIn("LAVA results (arduino)", publish)
+        self.assertIn("performance-results/generic", publish)
+        self.assertIn("performance-results/arduino", publish)
+        boards = json.loads(
+            (ROOT / "ci" / "boards.json").read_text(encoding="utf-8")
+        )["boards"]
+        self.assertEqual(
+            set(boards),
+            {
+                "qrb2210-rb1",
+                "qcs6490-rb3gen2-vision-kit",
+                "monaco-arduino-monza",
+                "qrb2210-arduino-imola",
+            },
+        )
+        self.assertIn("scope-matrix.json", job_block(self.lava, "prepare-job-list"))
+        submit = job_block(self.lava, "submit-job")
+        self.assertIn("matrix.scope", submit)
         self.assertIn(
-            "report_scope: arduino", job_block(self.daily, "test-arduino")
+            "matrix: ${{ fromJson(needs.prepare-job-list.outputs.jobmatrix) }}",
+            submit,
+        )
+        self.assertNotIn("publish-test-results", submit)
+        prepare = job_block(self.lava, "prepare-job-list")
+        self.assertIn('[[ "$scope" =~ ^(generic|arduino)$ ]]', prepare)
+        self.assertIn(
+            "only a generic report can aggregate the arduino scope",
+            prepare,
         )
 
     def test_scheduled_comparison_requires_both_successful_scopes(self):
@@ -105,7 +148,7 @@ class DailyWorkflowTest(unittest.TestCase):
         self.assertIn("generic_enabled == 'true'", comparison)
         self.assertIn("arduino_enabled == 'true'", comparison)
         self.assertIn("needs.test-generic.result == 'success'", comparison)
-        self.assertIn("needs.test-arduino.result == 'success'", comparison)
+        self.assertNotIn("test-arduino", comparison)
 
     def test_comparison_consumes_both_scoped_artifacts(self):
         self.assertIn(
@@ -125,6 +168,9 @@ class DailyWorkflowTest(unittest.TestCase):
         expected = "uses: ./.github/workflows/compare-performance.yml"
         self.assertIn(expected, job_block(self.push, "compare-performance"))
         self.assertIn(expected, job_block(self.daily, "compare-performance"))
+        push_generic = job_block(self.push, "test-generic")
+        self.assertIn("additional_report_scope: arduino", push_generic)
+        self.assertNotIn("  test-arduino:\n", self.push)
 
 
 if __name__ == "__main__":

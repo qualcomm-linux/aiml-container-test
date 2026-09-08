@@ -52,7 +52,6 @@ RESULT_FIELDS = [
     "previous_measurement",
     "change",
     "change_percent",
-    "comparison_scope",
     "comparison_status",
 ]
 
@@ -104,9 +103,76 @@ def read_previous(path):
     if path is None or not path.is_file():
         return None
     previous = json.loads(path.read_text(encoding="utf-8"))
-    if previous.get("schema_version") not in (1, SCHEMA_VERSION):
+    if previous.get("schema_version") != SCHEMA_VERSION:
         return None
     return previous
+
+
+def measurement_method():
+    return {
+        "version": MEASUREMENT_METHOD_VERSION,
+        "outer_warmup_runs": 1,
+        "outer_sample_count": EXPECTED_SAMPLE_COUNT,
+        "trim_lowest": 1,
+        "trim_highest": 1,
+        "aggregate": "arithmetic_mean",
+    }
+
+
+def board_configurations_match(current_boards, candidate_boards):
+    def index(boards):
+        if not isinstance(boards, list):
+            return None
+        indexed = {}
+        for board in boards:
+            if not isinstance(board, dict):
+                return None
+            board_id = board.get("id")
+            configuration = board.get("test_configuration")
+            if (
+                not isinstance(board_id, str)
+                or not board_id
+                or not isinstance(configuration, dict)
+                or board_id in indexed
+            ):
+                return None
+            indexed[board_id] = configuration
+        return indexed
+
+    current = index(current_boards)
+    candidate = index(candidate_boards)
+    return (
+        current is not None
+        and candidate is not None
+        and current == candidate
+    )
+
+
+def reports_are_semantically_compatible(current, candidate):
+    if not isinstance(current, dict) or not isinstance(candidate, dict):
+        return False
+    if (
+        current.get("schema_version") != SCHEMA_VERSION
+        or candidate.get("schema_version") != SCHEMA_VERSION
+    ):
+        return False
+    current_method = current.get("measurement_method")
+    if not isinstance(current_method, dict) or not current_method:
+        return False
+    if candidate.get("measurement_method") != current_method:
+        return False
+    if candidate.get("suite") != current.get("suite"):
+        return False
+    return board_configurations_match(
+        current.get("boards"), candidate.get("boards")
+    )
+
+
+def select_newest_compatible_report(current, candidates):
+    for candidate in candidates:
+        if reports_are_semantically_compatible(current, candidate):
+            return candidate
+    return None
 
 
 def match_value(pattern, text):
@@ -755,7 +821,6 @@ def load_jobs(input_dir, board_map, lava_url):
                         "previous_measurement": None,
                         "change": None,
                         "change_percent": None,
-                        "comparison_scope": None,
                         "comparison_status": "no-baseline",
                     }
                 )
@@ -787,7 +852,13 @@ def previous_board_index(previous):
 
 def add_comparisons(boards, previous, suite):
     previous_boards = previous_board_index(previous)
-    if previous is None or previous.get("suite") != suite:
+    current = {
+        "schema_version": SCHEMA_VERSION,
+        "measurement_method": measurement_method(),
+        "suite": suite,
+        "boards": boards,
+    }
+    if not reports_are_semantically_compatible(current, previous):
         return {}
 
     for board in boards:
@@ -795,19 +866,6 @@ def add_comparisons(boards, previous, suite):
         if previous_board is None:
             continue
 
-        method_changed = (
-            previous.get("schema_version") != SCHEMA_VERSION
-            or previous_board.get("test_configuration", {}).get("version")
-            != board.get("test_configuration", {}).get("version")
-            or board.get("test_configuration", {}).get("version")
-            != MEASUREMENT_METHOD_VERSION
-        )
-        comparison_scope = (
-            "same-dut"
-            if board.get("actual_device")
-            and board.get("actual_device") == previous_board.get("actual_device")
-            else "cross-dut"
-        )
         previous_results = {
             result["test_case_id"]: result
             for result in previous_board.get("results", [])
@@ -815,10 +873,6 @@ def add_comparisons(boards, previous, suite):
         for result in board["results"]:
             old = previous_results.get(result["test_case_id"])
             if old is None:
-                continue
-            result["comparison_scope"] = comparison_scope
-            if method_changed:
-                result["comparison_status"] = "method-changed"
                 continue
             if result["result"] != "pass" or old.get("result") != "pass":
                 result["comparison_status"] = "result-not-pass"
@@ -1109,6 +1163,20 @@ def write_summary(path, boards, provenance, previous, previous_boards):
             )
             continue
 
+        passed = sum(
+            result["result"] == "pass" for result in board["results"]
+        )
+        failed = sum(
+            result["result"] == "fail" for result in board["results"]
+        )
+        lines.extend(
+            [
+                f"**Test results:** {passed} passed, {failed} failed, "
+                f"{len(board['results'])} total.",
+                "",
+            ]
+        )
+
         measured = [
             result
             for result in board["results"]
@@ -1152,17 +1220,10 @@ def write_summary(path, boards, provenance, previous, previous_boards):
                 else "N/A"
             )
             if result["previous_measurement"] is not None:
-                scope = (
-                    "same DUT"
-                    if result["comparison_scope"] == "same-dut"
-                    else "**cross-DUT**"
-                )
                 previous_value = (
                     f"{format_number(result['previous_measurement'])} "
-                    f"{result['unit']} ({scope})"
+                    f"{result['unit']}"
                 )
-            elif result["comparison_status"] == "method-changed":
-                previous_value = "Non-comparable (method changed)"
             else:
                 previous_value = "N/A"
             change = (
@@ -1274,14 +1335,7 @@ def main():
     previous_boards = add_comparisons(boards, previous, args.suite)
     report = {
         "schema_version": SCHEMA_VERSION,
-        "measurement_method": {
-            "version": MEASUREMENT_METHOD_VERSION,
-            "outer_warmup_runs": 1,
-            "outer_sample_count": EXPECTED_SAMPLE_COUNT,
-            "trim_lowest": 1,
-            "trim_highest": 1,
-            "aggregate": "arithmetic_mean",
-        },
+        "measurement_method": measurement_method(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "suite": args.suite,
         "provenance": provenance,
