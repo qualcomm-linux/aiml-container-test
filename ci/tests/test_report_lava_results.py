@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Qualcomm Technologies, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
+import copy
 import csv
 import importlib.util
 import json
@@ -147,6 +148,7 @@ class ReportLavaResultsTest(unittest.TestCase):
         self.assertIn("workflow attempt 2", summary)
         self.assertIn("publication attempt 1", summary)
         self.assertIn("`7.2.0-test`", summary)
+        self.assertIn("**Test results:** 2 passed, 1 failed, 3 total.", summary)
         self.assertIn("| GPU | fail | N/A |", summary)
 
         with (self.output_dir / "results.csv").open(
@@ -194,7 +196,7 @@ class ReportLavaResultsTest(unittest.TestCase):
             benchmark_result["samples"][0]["inner"]["median_us"], 101.0
         )
 
-    def test_compares_matching_measurements_across_configuration_changes(self):
+    def test_compares_matching_measurements_across_different_physical_duts(self):
         boards = REPORT.load_jobs(
             self.input_dir,
             REPORT.load_board_map(self.boards_file),
@@ -203,17 +205,15 @@ class ReportLavaResultsTest(unittest.TestCase):
         previous = {
             "schema_version": 2,
             "suite": "trixie",
+            "measurement_method": REPORT.measurement_method(),
             "provenance": self.provenance(),
             "boards": [
                 {
                     "id": "test-board",
-                    "actual_device": "test-device-01",
-                    "test_configuration": {
-                        "version": 3,
-                        "threads": 4,
-                        "timeout_seconds": 120,
-                        "op_profiling": False,
-                    },
+                    "actual_device": "other-test-device",
+                    "test_configuration": copy.deepcopy(
+                        boards[0]["test_configuration"]
+                    ),
                     "results": [
                         {
                             **boards[0]["results"][0],
@@ -234,30 +234,9 @@ class ReportLavaResultsTest(unittest.TestCase):
         self.assertEqual(boards[0]["results"][0]["previous_measurement"], 25.0)
         self.assertEqual(boards[0]["results"][0]["change_percent"], 22.0)
         self.assertIsNone(boards[0]["results"][2]["previous_measurement"])
-        self.assertEqual(
-            REPORT.test_configuration_changes(
-                boards[0], previous["boards"][0]
-            ),
-            [
-                "threads: `4` -> `8`",
-                "timeout: `120 s` -> `360 s`",
-                "operator profiling: `disabled` -> `enabled`",
-                "outer warm-up runs: `N/A` -> `1`",
-                "outer sample count: `N/A` -> `10`",
-                "benchmark warm-up runs: `N/A` -> `10`",
-                "benchmark warm-up minimum: `N/A` -> `1 s`",
-                "benchmark runs: `N/A` -> `100`",
-                "benchmark minimum: `N/A` -> `3 s`",
-                "benchmark maximum: `N/A` -> `150 s`",
-                "label-image warm-up runs: `N/A` -> `10`",
-                "label-image count: `N/A` -> `100`",
-            ],
-        )
-        self.assertEqual(
-            boards[0]["results"][0]["comparison_scope"], "same-dut"
-        )
+        self.assertNotIn("comparison_scope", boards[0]["results"][0])
 
-    def test_old_single_sample_baseline_is_non_comparable(self):
+    def test_incompatible_exact_dut_v1_baseline_is_skipped(self):
         boards = REPORT.load_jobs(
             self.input_dir,
             REPORT.load_board_map(self.boards_file),
@@ -285,25 +264,34 @@ class ReportLavaResultsTest(unittest.TestCase):
         REPORT.add_comparisons(boards, previous, "trixie")
 
         result = boards[0]["results"][0]
-        self.assertEqual(result["comparison_status"], "method-changed")
+        self.assertEqual(result["comparison_status"], "no-baseline")
         self.assertIsNone(result["previous_measurement"])
         self.assertIsNone(result["change_percent"])
 
-    def test_cross_dut_fallback_is_visibly_labeled(self):
+    def test_compatibility_requires_schema_method_suite_and_configuration(self):
         boards = REPORT.load_jobs(
             self.input_dir,
             REPORT.load_board_map(self.boards_file),
             "https://lava.example.com",
         )
-        previous = {
+        current = {
             "schema_version": 2,
             "suite": "trixie",
+            "measurement_method": REPORT.measurement_method(),
             "provenance": self.provenance(),
+            "boards": boards,
+        }
+        candidate = {
+            "schema_version": 2,
+            "suite": "trixie",
+            "measurement_method": REPORT.measurement_method(),
             "boards": [
                 {
                     "id": "test-board",
                     "actual_device": "other-device-99",
-                    "test_configuration": boards[0]["test_configuration"],
+                    "test_configuration": copy.deepcopy(
+                        boards[0]["test_configuration"]
+                    ),
                     "results": [
                         {
                             **boards[0]["results"][0],
@@ -314,20 +302,44 @@ class ReportLavaResultsTest(unittest.TestCase):
             ],
         }
 
-        previous_boards = REPORT.add_comparisons(boards, previous, "trixie")
-        summary = self.root / "cross-dut.md"
-        REPORT.write_summary(
-            summary,
-            boards,
-            self.provenance(),
-            previous,
-            previous_boards,
+        self.assertTrue(
+            REPORT.reports_are_semantically_compatible(current, candidate)
         )
-
-        result = boards[0]["results"][0]
-        self.assertEqual(result["comparison_scope"], "cross-dut")
-        self.assertEqual(result["comparison_status"], "compared")
-        self.assertIn("**cross-DUT**", summary.read_text(encoding="utf-8"))
+        older_same_dut = copy.deepcopy(candidate)
+        older_same_dut["boards"][0]["actual_device"] = "test-device-01"
+        self.assertIs(
+            REPORT.select_newest_compatible_report(
+                current, [candidate, older_same_dut]
+            ),
+            candidate,
+        )
+        candidate["measurement_method"]["trim_lowest"] = 2
+        self.assertFalse(
+            REPORT.reports_are_semantically_compatible(current, candidate)
+        )
+        candidate["measurement_method"] = REPORT.measurement_method()
+        candidate["suite"] = "forky"
+        self.assertFalse(
+            REPORT.reports_are_semantically_compatible(current, candidate)
+        )
+        candidate["suite"] = "trixie"
+        candidate["boards"][0]["test_configuration"]["threads"] = 4
+        self.assertFalse(
+            REPORT.reports_are_semantically_compatible(current, candidate)
+        )
+        candidate["boards"][0]["test_configuration"] = copy.deepcopy(
+            boards[0]["test_configuration"]
+        )
+        candidate["schema_version"] = 1
+        self.assertFalse(
+            REPORT.reports_are_semantically_compatible(current, candidate)
+        )
+        self.assertIs(
+            REPORT.select_newest_compatible_report(
+                current, [candidate, older_same_dut]
+            ),
+            older_same_dut,
+        )
 
     def test_incomplete_samples_and_measurement_mismatch_are_rejected(self):
         log_path = self.input_dir / "job-42.yaml"
@@ -393,14 +405,14 @@ class ReportLavaResultsTest(unittest.TestCase):
 
         self.assertEqual(results["tflite-label-image-cpu"]["result"], "pass")
 
-    def test_reads_old_report_for_context(self):
+    def test_skips_old_report_schema(self):
         previous_path = self.root / "previous.json"
         previous_path.write_text(
             json.dumps({"schema_version": 1, "boards": []}),
             encoding="utf-8",
         )
 
-        self.assertEqual(REPORT.read_previous(previous_path)["schema_version"], 1)
+        self.assertIsNone(REPORT.read_previous(previous_path))
 
     def test_statistics_use_sample_variance_and_flag_instability(self):
         statistics = REPORT.calculate_statistics(

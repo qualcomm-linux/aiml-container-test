@@ -131,9 +131,10 @@ jobs:
     needs:
       - configure
       - resolve-qcom-image-generic
+      - resolve-qcom-image-arduino
       - build-daily
       - schema-check
-    if: ${{ needs.configure.outputs.generic_enabled == 'true' }}
+    if: ${{ always() && needs.configure.outputs.generic_enabled == 'true' && needs.resolve-qcom-image-generic.result == 'success' && needs.build-daily.result == 'success' && needs.schema-check.result == 'success' && (needs.configure.outputs.arduino_enabled != 'true' || needs.resolve-qcom-image-arduino.result == 'success') }}
     uses: ./.github/workflows/lava-test.yml
     permissions:
       actions: read
@@ -156,6 +157,17 @@ jobs:
       qcom_workflow: ${{ needs.resolve-qcom-image-generic.outputs.workflow }}
       report_scope: generic
       suite: ${{ inputs.suite || 'trixie' }}
+      additional_boards_include: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.configure.outputs.arduino_boards || '' }}
+      additional_build_url: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.build_url || '' }}
+      additional_image_source: ${{ needs.configure.outputs.arduino_enabled == 'true' && 'arduino' || '' }}
+      additional_qcom_event: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.event || '' }}
+      additional_qcom_ref: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.ref || '' }}
+      additional_qcom_run_attempt: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.run_attempt || '' }}
+      additional_qcom_publication_attempt: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.publication_attempt || '' }}
+      additional_qcom_run_id: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.run_id || '' }}
+      additional_qcom_sha: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.sha || '' }}
+      additional_qcom_workflow: ${{ needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.outputs.workflow || '' }}
+      additional_report_scope: ${{ needs.configure.outputs.arduino_enabled == 'true' && 'arduino' || '' }}
 
   test-arduino:
     name: Test AIML container with Arduino images
@@ -164,7 +176,7 @@ jobs:
       - resolve-qcom-image-arduino
       - build-daily
       - schema-check
-    if: ${{ needs.configure.outputs.arduino_enabled == 'true' }}
+    if: ${{ always() && needs.configure.outputs.generic_enabled != 'true' && needs.configure.outputs.arduino_enabled == 'true' && needs.resolve-qcom-image-arduino.result == 'success' && needs.build-daily.result == 'success' && needs.schema-check.result == 'success' }}
     uses: ./.github/workflows/lava-test.yml
     permissions:
       actions: read
@@ -193,8 +205,7 @@ jobs:
     needs:
       - configure
       - test-generic
-      - test-arduino
-    if: ${{ always() && needs.configure.outputs.generic_enabled == 'true' && needs.configure.outputs.arduino_enabled == 'true' && needs.test-generic.result == 'success' && needs.test-arduino.result == 'success' }}
+    if: ${{ always() && needs.configure.outputs.generic_enabled == 'true' && needs.configure.outputs.arduino_enabled == 'true' && needs.test-generic.result == 'success' }}
     uses: ./.github/workflows/compare-performance.yml
     permissions:
       actions: read
