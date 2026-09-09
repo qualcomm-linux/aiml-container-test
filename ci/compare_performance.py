@@ -16,6 +16,11 @@ WORKLOADS = (
 )
 ACCELERATORS = ("cpu", "gpu", "cdsp")
 SCHEMA_VERSION = 2
+ERROR_CAP_HALF_WIDTH = 10
+BOARD_CENTER_SPACING = 104
+PANEL_GAP = 46
+SIDE_MARGIN = 55
+MINIMUM_SVG_WIDTH = 900
 
 
 def parse_args():
@@ -64,12 +69,36 @@ def load_reports(input_dir):
 
 def result_index(board):
     return {
-        (result["workload"], result["accelerator"]): result["measurement"]
-        for result in board["results"]
-        if result["result"] == "pass"
-        and result["measurement"] is not None
-        and result["unit"] == "ms"
+        key: result["measurement"]
+        for key, result in chart_result_index(board).items()
     }
+
+
+def chart_result_index(board):
+    indexed = {}
+    for result in board["results"]:
+        if (
+            result["result"] != "pass"
+            or result["measurement"] is None
+            or result["unit"] != "ms"
+        ):
+            continue
+        standard_deviation = None
+        statistics = result.get("statistics")
+        if isinstance(statistics, dict):
+            candidate = statistics.get("trimmed_stddev")
+            if (
+                isinstance(candidate, (int, float))
+                and not isinstance(candidate, bool)
+                and math.isfinite(candidate)
+                and candidate >= 0
+            ):
+                standard_deviation = candidate
+        indexed[(result["workload"], result["accelerator"])] = {
+            "measurement": result["measurement"],
+            "standard_deviation": standard_deviation,
+        }
+    return indexed
 
 
 def graph_limit(values):
@@ -83,7 +112,7 @@ def graph_limit(values):
 
 def svg_text(x, y, text, **attributes):
     rendered = " ".join(
-        f'{name.replace("_", "-")}="{value}"'
+        f'{name.replace("_", "-")}="{html.escape(str(value), quote=True)}"'
         for name, value in attributes.items()
     )
     return (
@@ -92,16 +121,27 @@ def svg_text(x, y, text, **attributes):
     )
 
 
+def format_chart_measurement(value, standard_deviation):
+    precision = 1 if value >= 1 else 2
+    formatted_value = f"{value:.{precision}f}"
+    if standard_deviation is None:
+        return f"{formatted_value} ms"
+    return (
+        f"{formatted_value} \N{PLUS-MINUS SIGN} "
+        f"{standard_deviation:.{precision}f} ms"
+    )
+
+
 def write_svg(path, boards):
-    width = 1200
-    height = 860
-    margin_x = 70
+    panel_width = BOARD_CENTER_SPACING * max(len(boards), 1)
+    content_width = panel_width * len(WORKLOADS) + PANEL_GAP
+    width = max(MINIMUM_SVG_WIDTH, content_width + SIDE_MARGIN * 2)
+    height = 880
+    margin_x = (width - content_width) / 2
     top = 145
-    panel_width = 520
-    panel_height = 185
-    column_gap = 70
-    row_gap = 55
-    indexes = {board["id"]: result_index(board) for board in boards}
+    panel_height = 200
+    row_gap = 45
+    indexes = {board["id"]: chart_result_index(board) for board in boards}
     elements = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         (
@@ -127,7 +167,11 @@ def write_svg(path, boards):
         svg_text(
             width / 2,
             70,
-            "Lower is better. Each panel uses a linear scale starting at zero.",
+            (
+                "Lower is better. Linear axes start at zero. Bars: trimmed "
+                "mean; whiskers: \N{PLUS-MINUS SIGN}1\u03c3 "
+                "(n=8 after trimming)."
+            ),
             text_anchor="middle",
             font_family="sans-serif",
             font_size="14",
@@ -135,36 +179,50 @@ def write_svg(path, boards):
         ),
     ]
 
-    legend_width = 150
-    legend_start = (width - (legend_width * len(boards))) / 2
+    legend = [
+        (
+            f'<text x="{width / 2:g}" y="105" text-anchor="middle" '
+            'font-family="sans-serif" font-size="13" fill="#1f2328" '
+            'data-role="legend">'
+        )
+    ]
     for index, board in enumerate(boards):
-        x = legend_start + index * legend_width
         color = COLORS[index % len(COLORS)]
-        elements.append(
-            f'<rect x="{x}" y="92" width="16" height="16" rx="2" fill="{color}"/>'
+        item_gap = ' dx="28"' if index else ""
+        legend.append(
+            f'<tspan{item_gap} fill="{color}" font-size="16" '
+            'aria-hidden="true" data-role="legend-swatch">&#9632;</tspan>'
         )
-        elements.append(
-            svg_text(
-                x + 24,
-                105,
-                board["name"],
-                font_family="sans-serif",
-                font_size="13",
-                fill="#1f2328",
-            )
+        legend.append(
+            '<tspan dx="8" fill="#1f2328" data-role="legend-label">'
+            f'{html.escape(str(board["name"]))}</tspan>'
         )
+    legend.append("</text>")
+    elements.append("".join(legend))
 
     for row, accelerator in enumerate(ACCELERATORS):
         for column, (workload, workload_name) in enumerate(WORKLOADS):
-            x = margin_x + column * (panel_width + column_gap)
+            x = margin_x + column * (panel_width + PANEL_GAP)
             y = top + row * (panel_height + row_gap)
-            values = [
+            results = [
                 indexes[board["id"]].get((workload, accelerator))
                 for board in boards
             ]
-            limit = graph_limit([value for value in values if value is not None])
+            values = [
+                result["measurement"] if result is not None else None
+                for result in results
+            ]
+            extents = [
+                result["measurement"]
+                + (result["standard_deviation"] or 0)
+                for result in results
+                if result is not None
+            ]
+            limit = graph_limit(extents)
+            measured = [value for value in values if value is not None]
+            best = min(measured) if measured else None
             chart_top = y + 36
-            chart_bottom = y + panel_height - 28
+            chart_bottom = y + panel_height - 40
             chart_height = chart_bottom - chart_top
             elements.extend(
                 [
@@ -179,7 +237,8 @@ def write_svg(path, boards):
                     ),
                     (
                         f'<line x1="{x}" y1="{chart_bottom}" x2="{x + panel_width}" '
-                        f'y2="{chart_bottom}" stroke="#8c959f" stroke-width="1"/>'
+                        f'y2="{chart_bottom}" stroke="#8c959f" stroke-width="1" '
+                        'data-role="axis"/>'
                     ),
                 ]
             )
@@ -205,12 +264,15 @@ def write_svg(path, boards):
                     ]
                 )
 
-            slot_width = panel_width / max(len(boards), 1)
-            bar_width = min(70, slot_width * 0.55)
-            for index, (board, value) in enumerate(zip(boards, values)):
-                center = x + slot_width * (index + 0.5)
+            bar_width = ERROR_CAP_HALF_WIDTH * 2
+            board_group_width = BOARD_CENTER_SPACING * max(
+                len(boards) - 1, 0
+            )
+            first_board_x = x + (panel_width - board_group_width) / 2
+            for index, (board, result) in enumerate(zip(boards, results)):
+                center = first_board_x + BOARD_CENTER_SPACING * index
                 color = COLORS[index % len(COLORS)]
-                if value is None:
+                if result is None:
                     elements.append(
                         svg_text(
                             center,
@@ -220,28 +282,94 @@ def write_svg(path, boards):
                             font_family="sans-serif",
                             font_size="12",
                             fill="#8c959f",
+                            data_role="na-label",
                         )
                     )
-                    continue
-                bar_height = chart_height * value / limit
-                bar_y = chart_bottom - bar_height
-                elements.extend(
-                    [
-                        (
-                            f'<rect x="{center - bar_width / 2:.2f}" '
-                            f'y="{bar_y:.2f}" width="{bar_width:.2f}" '
-                            f'height="{bar_height:.2f}" rx="3" fill="{color}"/>'
-                        ),
-                        svg_text(
-                            center,
-                            f"{max(chart_top + 12, bar_y - 6):.2f}",
-                            f"{value:g} ms",
-                            text_anchor="middle",
-                            font_family="sans-serif",
-                            font_size="11",
-                            fill="#1f2328",
-                        ),
-                    ]
+                else:
+                    value = result["measurement"]
+                    standard_deviation = result["standard_deviation"]
+                    bar_height = chart_height * value / limit
+                    bar_y = chart_bottom - bar_height
+                    upper_y = bar_y
+                    whisker_stem = []
+                    whisker_caps = []
+                    board_id = html.escape(str(board["id"]), quote=True)
+                    if standard_deviation is not None and standard_deviation > 0:
+                        upper_value = value + standard_deviation
+                        lower_value = max(0, value - standard_deviation)
+                        upper_y = chart_bottom - chart_height * upper_value / limit
+                        lower_y = chart_bottom - chart_height * lower_value / limit
+                        whisker_stem = [
+                            (
+                                f'<line x1="{center:.2f}" y1="{upper_y:.2f}" '
+                                f'x2="{center:.2f}" y2="{lower_y:.2f}" '
+                                'stroke="#24292f" stroke-width="1" '
+                                'stroke-linecap="round" '
+                                f'data-board="{board_id}" '
+                                'data-role="error-whisker"/>'
+                            )
+                        ]
+                        whisker_caps = [
+                            (
+                                f'<line x1="{center - ERROR_CAP_HALF_WIDTH:.2f}" '
+                                f'y1="{upper_y:.2f}" '
+                                f'x2="{center + ERROR_CAP_HALF_WIDTH:.2f}" '
+                                f'y2="{upper_y:.2f}" stroke="#24292f" '
+                                'stroke-width="1" stroke-linecap="round" '
+                                f'data-board="{board_id}" '
+                                'data-role="error-cap"/>'
+                            ),
+                            (
+                                f'<line x1="{center - ERROR_CAP_HALF_WIDTH:.2f}" '
+                                f'y1="{lower_y:.2f}" '
+                                f'x2="{center + ERROR_CAP_HALF_WIDTH:.2f}" '
+                                f'y2="{lower_y:.2f}" stroke="#24292f" '
+                                'stroke-width="1" stroke-linecap="round" '
+                                f'data-board="{board_id}" '
+                                'data-role="error-cap"/>'
+                            ),
+                        ]
+                    value_attributes = {
+                        "text_anchor": "middle",
+                        "font_family": "sans-serif",
+                        "font_size": "11",
+                        "fill": "#1f2328",
+                        "data_role": "value-label",
+                    }
+                    if value == best:
+                        value_attributes["font_weight"] = "700"
+                    elements.extend(
+                        [
+                            (
+                                f'<rect x="{center - bar_width / 2:.2f}" '
+                                f'y="{bar_y:.2f}" width="{bar_width:.2f}" '
+                                f'height="{bar_height:.2f}" fill="{color}" '
+                                f'data-board="{board_id}" '
+                                'data-role="measurement-bar"/>'
+                            ),
+                            *whisker_stem,
+                            *whisker_caps,
+                            svg_text(
+                                center,
+                                f"{max(chart_top + 12, upper_y - 6):.2f}",
+                                format_chart_measurement(
+                                    value, standard_deviation
+                                ),
+                                **value_attributes,
+                            ),
+                        ]
+                    )
+                elements.append(
+                    svg_text(
+                        center,
+                        chart_bottom + 18,
+                        board["name"],
+                        text_anchor="middle",
+                        font_family="sans-serif",
+                        font_size="11",
+                        fill="#59636e",
+                        data_role="bar-label",
+                    )
                 )
 
     elements.extend(
