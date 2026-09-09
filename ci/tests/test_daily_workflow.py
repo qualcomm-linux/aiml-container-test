@@ -99,9 +99,21 @@ class DailyWorkflowTest(unittest.TestCase):
         publish = job_block(self.lava, "publish-test-results")
         self.assertIn("name: Publish Tests Results", publish)
         self.assertIn("needs: submit-job", publish)
-        self.assertIn("Report scope: ${scope}", publish)
         self.assertIn(
-            'cat "performance-results/$scope/summary.md" '
+            "python3 ci/compose_lava_summary.py",
+            publish,
+        )
+        self.assertIn(
+            "cat performance-results/canonical-summary.md "
+            '>>"$GITHUB_STEP_SUMMARY"',
+            publish,
+        )
+        self.assertEqual(
+            publish.count("cat performance-results/canonical-summary.md"),
+            1,
+        )
+        self.assertNotIn(
+            'cat "performance-results/$scope/check-summary.md" '
             '>>"$GITHUB_STEP_SUMMARY"',
             publish,
         )

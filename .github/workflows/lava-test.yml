@@ -951,31 +951,12 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo '# TensorFlow Lite test results' >>"$GITHUB_STEP_SUMMARY"
-          while IFS= read -r scope_spec; do
-            scope=$(jq -r '.scope' <<<"$scope_spec")
-            echo >>"$GITHUB_STEP_SUMMARY"
-            echo "# Report scope: ${scope}" >>"$GITHUB_STEP_SUMMARY"
-            if jq -e --arg scope "$scope" '.[$scope].incomplete' \
-              performance-results/report-status.json >/dev/null; then
-              echo >>"$GITHUB_STEP_SUMMARY"
-              echo '> **INCOMPLETE / UNAVAILABLE:** Some LAVA diagnostics or results are missing; available details follow.' >>"$GITHUB_STEP_SUMMARY"
-            fi
-            if [[ -s "performance-results/$scope/summary.md" ]]; then
-              cat "performance-results/$scope/summary.md" >>"$GITHUB_STEP_SUMMARY"
-            else
-              echo >>"$GITHUB_STEP_SUMMARY"
-              echo '> **UNAVAILABLE:** A complete performance report could not be generated for this scope.' >>"$GITHUB_STEP_SUMMARY"
-            fi
-            if [[ -s "performance-results/$scope/check-summary.md" ]]; then
-              echo >>"$GITHUB_STEP_SUMMARY"
-              cat "performance-results/$scope/check-summary.md" >>"$GITHUB_STEP_SUMMARY"
-            fi
-            if [[ -s "performance-results/$scope/diagnostics.md" ]]; then
-              echo >>"$GITHUB_STEP_SUMMARY"
-              cat "performance-results/$scope/diagnostics.md" >>"$GITHUB_STEP_SUMMARY"
-            fi
-          done < <(jq -c '.include[]' performance-results/scope-matrix.json)
+          python3 ci/compose_lava_summary.py \
+            --results-root performance-results \
+            --scope-matrix performance-results/scope-matrix.json \
+            --report-status performance-results/report-status.json \
+            --output performance-results/canonical-summary.md
+          cat performance-results/canonical-summary.md >>"$GITHUB_STEP_SUMMARY"
 
       - name: Fail incomplete report publication
         if: always()
