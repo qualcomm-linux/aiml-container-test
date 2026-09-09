@@ -136,6 +136,22 @@ class DailyWorkflowTest(unittest.TestCase):
             prepare,
         )
 
+    def test_execution_status_artifacts_are_validated_by_scope_matrix(self):
+        prepare = job_block(self.lava, "prepare-job-list")
+        publish = job_block(self.lava, "publish-test-results")
+        self.assertIn("expected_statuses", prepare)
+        self.assertIn("ci/validate_lava_execution_statuses.py", publish)
+        self.assertIn('--scope-spec "$scope_spec"', publish)
+        self.assertIn(
+            'path: artifacts\n          pattern: '
+            'lava-execution-status-${{ inputs.suite }}-*',
+            publish,
+        )
+        self.assertNotIn(
+            '-name "lava-execution-status-${SUITE}-${scope}-*.json"',
+            publish,
+        )
+
     def test_scheduled_comparison_requires_both_successful_scopes(self):
         comparison = job_block(self.daily, "compare-performance")
         self.assertEqual(

@@ -297,6 +297,12 @@ jobs:
                   | map(select(.board as $board | $include | any(. == $board)))
                   | map(. + $scope_spec)
                 ')
+            expected_statuses=$(jq -c '[.[] | {board, slug}]' \
+              <<<"$scoped_jobs")
+            # shellcheck disable=SC2016
+            scope_spec=$(jq -c \
+              --argjson expected_statuses "$expected_statuses" \
+              '. + {expected_statuses: $expected_statuses}' <<<"$scope_spec")
             # shellcheck disable=SC2016
             jobmatrix=$(jq -c --argjson jobs "$scoped_jobs" \
               '.include += $jobs' <<<"$jobmatrix")
@@ -613,27 +619,41 @@ jobs:
             baseline_run_id=''
             mapfile -d '' job_files < <(find artifacts -type f \
               -name "${SUITE}-${GITHUB_RUN_ATTEMPT}-${scope}-test-job-*.json" -print0)
-            mapfile -d '' status_files < <(find artifacts -type f \
-              -name "lava-execution-status-${SUITE}-${scope}-*.json" -print0)
             if find artifacts -type f \
               -name "test-results-${SUITE}-${scope}-*.xml" -print -quit | grep -q .; then
               has_results=true
             fi
+            status_validation="$output/execution-status-validation.json"
+            if ! python3 ci/validate_lava_execution_statuses.py \
+              --artifacts-dir artifacts \
+              --suite "$SUITE" \
+              --scope-spec "$scope_spec" \
+              --output "$status_validation"; then
+              incomplete=true
+              printf -- '- Could not validate execution status artifacts.\n' \
+                >>"$diagnostics"
+            elif ! status_count=$(jq -er \
+              '.status_count | select(type == "number" and . >= 0)' \
+              "$status_validation"); then
+              incomplete=true
+              printf -- '- Execution status validation produced no count.\n' \
+                >>"$diagnostics"
+            else
+              printf -- '- Execution statuses found: %s of %s expected\n' \
+                "$status_count" "$expected_job_count" >>"$diagnostics"
+              if ! jq -e '.complete == true' "$status_validation" >/dev/null; then
+                incomplete=true
+                while IFS= read -r diagnostic; do
+                  printf -- '- Execution status validation: %s\n' "$diagnostic" \
+                    >>"$diagnostics"
+                done < <(jq -r '.diagnostics[]' "$status_validation")
+              fi
+            fi
             printf -- '- Job details found: %s of at least %s expected\n' \
               "${#job_files[@]}" "$expected_job_count" >>"$diagnostics"
-            printf -- '- Execution statuses found: %s of %s expected\n' \
-              "${#status_files[@]}" "$expected_job_count" >>"$diagnostics"
-            if (( ${#job_files[@]} < expected_job_count )) ||
-               (( ${#status_files[@]} < expected_job_count )); then
+            if (( ${#job_files[@]} < expected_job_count )); then
               incomplete=true
             fi
-            for status_file_path in "${status_files[@]}"; do
-              if ! jq -e '.status == "success"' "$status_file_path" >/dev/null; then
-                incomplete=true
-                printf -- '- A board execution reported failure: `%s`\n' \
-                  "$(jq -c . "$status_file_path")" >>"$diagnostics"
-              fi
-            done
 
             raw_data_complete=true
             for json_file in "${job_files[@]}"; do
