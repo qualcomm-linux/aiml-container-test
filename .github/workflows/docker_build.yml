@@ -177,7 +177,7 @@ jobs:
           io.github.qualcomm-linux.aiml-container.run-id=${{ github.run_id }}
           io.github.qualcomm-linux.aiml-container.run-attempt=${{ github.run_attempt }}
           io.github.qualcomm-linux.aiml-container.run-url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        target: fastrpc-deploy
+        target: npu-deploy
         cache-from: type=gha
         cache-to: type=gha,mode=max
         outputs: type=docker,dest=${{ runner.temp }}/aiml-container-${{ steps.build_identifier.outputs.identifier }}.tar
@@ -263,7 +263,7 @@ jobs:
           io.github.qualcomm-linux.aiml-container.run-id=${{ github.run_id }}
           io.github.qualcomm-linux.aiml-container.run-attempt=${{ github.run_attempt }}
           io.github.qualcomm-linux.aiml-container.run-url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        target: fastrpc-deploy
+        target: npu-deploy
         cache-from: type=gha
         cache-to: type=gha,mode=max
 

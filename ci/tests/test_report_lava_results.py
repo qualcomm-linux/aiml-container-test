@@ -358,7 +358,6 @@ class ReportLavaResultsTest(unittest.TestCase):
                 REPORT.load_board_map(self.boards_file),
                 "https://lava.example.com",
             )
-
         log_path.write_text(original, encoding="utf-8")
         tests_path = self.input_dir / "job-42-tests.csv"
         contents = tests_path.read_text(encoding="utf-8")
@@ -372,6 +371,48 @@ class ReportLavaResultsTest(unittest.TestCase):
                 REPORT.load_board_map(self.boards_file),
                 "https://lava.example.com",
             )
+
+    def test_accepts_complete_genie_throughput_diagnostics(self):
+        test_case_id = "genie-qwen3-0.6b-htp-token-generation-per-second"
+        samples = [
+            f"AIML_SAMPLE test_case_id={test_case_id} index={index} "
+            f"measurement={index} units=toks/sec"
+            for index in range(1, 11)
+        ]
+        diagnostics = REPORT.parse_diagnostics(
+            [
+                f"AIML_WARMUP test_case_id={test_case_id} measurement=1 "
+                "units=toks/sec",
+                *samples,
+                f"AIML_STATS test_case_id={test_case_id} count=10 "
+                "discarded_low=1 discarded_high=10 raw_mean=5.5 "
+                "trimmed_mean=5.5 median=5.5 mad=2.5 raw_variance=9.166666666666666 "
+                "raw_stddev=3.0276503540974917 raw_cv=0.5504818825631803 "
+                "trimmed_variance=6 trimmed_stddev=2.449489742783178 "
+                "trimmed_cv=0.4453617714151233 units=toks/sec",
+            ]
+        )
+        result = REPORT.parse_lava_results(
+            [
+                f"LAVA_RESULT test_case_id={test_case_id} measurement=5.5 "
+                "units=toks/sec result=pass record_end=1"
+            ]
+        )[test_case_id]
+
+        validated = REPORT.validate_case_diagnostics(
+            test_case_id,
+            result["result"],
+            result["measurement"],
+            result["unit"],
+            diagnostics,
+            REPORT.MEASUREMENT_METHOD_VERSION,
+        )
+
+        self.assertEqual(validated["statistics"]["unit"], "toks/sec")
+        self.assertEqual(
+            REPORT.parse_test_case(test_case_id)["workload"],
+            "genie_decode_toks_per_sec",
+        )
 
     def test_prefixed_child_diagnostics_cannot_impersonate_records(self):
         log_path = self.input_dir / "job-42.yaml"

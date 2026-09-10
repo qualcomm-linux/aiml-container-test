@@ -95,13 +95,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
-# Install QAIRT host libraries and DSP skeletons for every supported Hexagon architecture
+# Install QAIRT host libraries, runners, and DSP skeletons for every supported
+# Hexagon architecture.
 ARG QAIRT_VERSION=2.47.0.260601
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib /usr/share/aiml-container
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/bin /usr/local/lib /usr/share/aiml-container
 RUN cd ~/build ; \
        wget "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip"; \
        unzip "v${QAIRT_VERSION}.zip" ; \
        rm ~/build/v${QAIRT_VERSION}.zip ; \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/bin/aarch64-oe-linux-gcc11.2/genie-t2t-run /usr/local/bin/ ; \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/bin/aarch64-oe-linux-gcc11.2/qnn-net-run /usr/local/bin/ ; \
        cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
        cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
        printf '%s\n' "${QAIRT_VERSION}" >/usr/share/aiml-container/qairt-version ; \
@@ -133,6 +136,48 @@ RUN mkdir -p /root/models
 
 #######################################################################
 
+FROM debian:bookworm-slim AS npu-models
+
+ARG AI_HUB_MODELS_VERSION=0.62.1
+ARG QWEN3_QCS8275_SHA256=f221ffdf80c93154727d46b0021d88a68b95df5ee75e1aa0061c840cd0d3b057
+ARG MEDIAPIPE_POSE_QCS6490_SHA256=257c2a1a63b758ee0409bb836abea54cc746f9ce9669632b3d27ee34e48c815f
+ARG MEDIAPIPE_POSE_QCS8275_SHA256=43af65e15ac666b1fc94c0d6e5c4a73ce9f22a03c0fb635184f19c198677a82b
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install ca-certificates curl unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+# These AI Hub assets are public, immutable release artifacts. Keep their
+# checksums adjacent to the download so a changed asset cannot alter a test.
+RUN set -eux; \
+    base_url="https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models"; \
+    mkdir -p /opt/genie-bundles/qwen3-0.6b /opt/qnn-bundles; \
+    curl --fail --location --retry 3 --output /tmp/qwen3.zip \
+      "${base_url}/qwen3_0_6b/releases/v${AI_HUB_MODELS_VERSION}/qwen3_0_6b-genie-w4a16-qualcomm_qcs8275.zip"; \
+    echo "${QWEN3_QCS8275_SHA256}  /tmp/qwen3.zip" | sha256sum --check --strict; \
+    unzip -q /tmp/qwen3.zip -d /opt/genie-bundles/qwen3-0.6b; \
+    mv /opt/genie-bundles/qwen3-0.6b/qwen3_0_6b-genie-w4a16-qualcomm_qcs8275 \
+      /opt/genie-bundles/qwen3-0.6b/qcs8275; \
+    curl --fail --location --retry 3 --output /tmp/mediapipe-pose-qcs6490.zip \
+      "${base_url}/mediapipe_pose/releases/v${AI_HUB_MODELS_VERSION}/mediapipe_pose-qnn_context_binary-w8a8-qualcomm_qcs6490.zip"; \
+    echo "${MEDIAPIPE_POSE_QCS6490_SHA256}  /tmp/mediapipe-pose-qcs6490.zip" | sha256sum --check --strict; \
+    unzip -q /tmp/mediapipe-pose-qcs6490.zip -d /opt/qnn-bundles; \
+    mv /opt/qnn-bundles/mediapipe_pose-qnn_context_binary-w8a8-qualcomm_qcs6490 \
+      /opt/qnn-bundles/mediapipe-pose-qcs6490; \
+    curl --fail --location --retry 3 --output /tmp/mediapipe-pose-qcs8275.zip \
+      "${base_url}/mediapipe_pose/releases/v${AI_HUB_MODELS_VERSION}/mediapipe_pose-qnn_context_binary-w8a8-qualcomm_qcs8275.zip"; \
+    echo "${MEDIAPIPE_POSE_QCS8275_SHA256}  /tmp/mediapipe-pose-qcs8275.zip" | sha256sum --check --strict; \
+    unzip -q /tmp/mediapipe-pose-qcs8275.zip -d /opt/qnn-bundles; \
+    mv /opt/qnn-bundles/mediapipe_pose-qnn_context_binary-w8a8-qualcomm_qcs8275 \
+      /opt/qnn-bundles/mediapipe-pose-qcs8275; \
+    dd if=/dev/zero of=/opt/qnn-bundles/mediapipe-pose-qcs6490/pose_detector_input.raw bs=49152 count=1 status=none; \
+    dd if=/dev/zero of=/opt/qnn-bundles/mediapipe-pose-qcs8275/pose_detector_input.raw bs=49152 count=1 status=none; \
+    printf 'image:=pose_detector_input.raw\n' >/opt/qnn-bundles/mediapipe-pose-qcs6490/input_list.txt; \
+    printf 'image:=pose_detector_input.raw\n' >/opt/qnn-bundles/mediapipe-pose-qcs8275/input_list.txt; \
+    rm -f /tmp/*.zip
+
+#######################################################################
+
 FROM debian:trixie-slim AS deploy
 
 # Rusticl leaves drivers disabled by default, so explicitly expose Freedreno to
@@ -142,7 +187,7 @@ ENV RUSTICL_ENABLE=freedreno
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install wget curl unzip ca-certificates
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install python3 wget curl unzip ca-certificates
 
 # Enable Backports repo, grab mesa from there
 COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
@@ -238,6 +283,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
 # Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
+COPY --from=fastrpc-build /usr/local/bin /usr/local/bin
 COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
 RUN find /usr/local/lib
 
@@ -249,3 +295,12 @@ RUN find /usr/lib/dsp
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
+
+#######################################################################
+
+FROM fastrpc-deploy AS npu-deploy
+
+COPY --from=npu-models /opt/genie-bundles /opt/genie-bundles
+COPY --from=npu-models /opt/qnn-bundles /opt/qnn-bundles
+COPY run-npu-tests.sh /
+RUN chmod +x /run-npu-tests.sh

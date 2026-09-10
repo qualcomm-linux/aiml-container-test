@@ -67,5 +67,5 @@ run:
     if compgen -G '/dev/fastrpc-cdsp*' >/dev/null; then
       device_args+=(--device=qualcomm.com/fastrpc-cdsp=fastrpc-cdsp:all)
     fi
-    docker run --rm --network host "${device_args[@]}" --entrypoint /bin/bash "$image" -lc '[ -e /dev/card ] || ln -s /dev/dri /dev/card; /run-tflite.sh'
+    docker run --rm --network host "${device_args[@]}" --entrypoint /bin/bash "$image" -lc '[ -e /dev/card ] || ln -s /dev/dri /dev/card; /run-tflite.sh && /run-npu-tests.sh'
     EOF

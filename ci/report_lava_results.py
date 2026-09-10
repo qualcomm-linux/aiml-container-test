@@ -15,7 +15,7 @@ SCHEMA_VERSION = 2
 MEASUREMENT_METHOD_VERSION = 3
 EXPECTED_SAMPLE_COUNT = 10
 UNSTABLE_CV_THRESHOLD = 0.05
-ACCELERATOR_ORDER = {"cpu": 0, "gpu": 1, "cdsp": 2}
+ACCELERATOR_ORDER = {"cpu": 0, "gpu": 1, "cdsp": 2, "htp": 3}
 RESULT_FIELDS = [
     "board_id",
     "board_name",
@@ -348,8 +348,8 @@ def parse_diagnostics(messages):
             if case["statistics"] is not None:
                 raise ValueError(f"duplicate statistics for {test_case_id}")
             units = fields.pop("units", None)
-            if units != "ms":
-                raise ValueError(f"invalid statistics units for {test_case_id}")
+            if not units:
+                raise ValueError(f"missing statistics units for {test_case_id}")
             count_value = fields.pop("count", None)
             if count_value is None or not count_value.isdigit():
                 raise ValueError(f"invalid statistics count for {test_case_id}")
@@ -385,8 +385,8 @@ def parse_diagnostics(messages):
             continue
 
         units = fields.pop("units", None)
-        if units != "ms":
-            raise ValueError(f"invalid {kind} units for {test_case_id}")
+        if not units:
+            raise ValueError(f"missing {kind} units for {test_case_id}")
         measurement = parse_required_measurement(
             fields.pop("measurement", None), "measurement"
         )
@@ -449,9 +449,9 @@ def parse_lava_results(messages):
             raise ValueError(f"duplicate LAVA result record: {test_case_id}")
         result["measurement"] = parse_measurement(result["measurement"])
         if result["result"] == "pass":
-            if result["measurement"] is None or result["unit"] != "ms":
+            if result["measurement"] is None or not result["unit"]:
                 raise ValueError(
-                    f"passing LAVA result lacks an ms measurement: {test_case_id}"
+                    f"passing LAVA result lacks a measurement: {test_case_id}"
                 )
         elif result["measurement"] is not None or result["unit"] is not None:
             raise ValueError(
@@ -480,7 +480,24 @@ def parse_test_case(test_case_id):
                     "model_id": test_case_id[len(prefix) : -len(suffix)],
                     "accelerator": accelerator,
                 }
-    raise ValueError(f"unrecognised TensorFlow Lite test case: {test_case_id}")
+    if test_case_id == "qnn-mediapipe-pose-detector-htp":
+        return {
+            "workload": "qnn_net_run",
+            "model_id": "mediapipe-pose-detector",
+            "accelerator": "htp",
+        }
+    genie_metrics = {
+        "genie-qwen3-0.6b-htp-ttft": "ttft",
+        "genie-qwen3-0.6b-htp-prompt-tokens-per-second": "prompt_toks_per_sec",
+        "genie-qwen3-0.6b-htp-token-generation-per-second": "decode_toks_per_sec",
+    }
+    if test_case_id in genie_metrics:
+        return {
+            "workload": f"genie_{genie_metrics[test_case_id]}",
+            "model_id": "qwen3-0.6b",
+            "accelerator": "htp",
+        }
+    raise ValueError(f"unrecognised test case: {test_case_id}")
 
 
 def parse_measurement(value):
@@ -550,8 +567,6 @@ def validate_case_diagnostics(
     if configuration_version != MEASUREMENT_METHOD_VERSION:
         return case
 
-    if unit != "ms":
-        raise ValueError(f"passing test has invalid units: {test_case_id}")
     if case["warmup"] is None:
         raise ValueError(f"missing outer warmup for passing test {test_case_id}")
     samples = case["samples"]
@@ -567,6 +582,12 @@ def validate_case_diagnostics(
     statistics = case["statistics"]
     if statistics is None or statistics["count"] != EXPECTED_SAMPLE_COUNT:
         raise ValueError(f"missing complete statistics for {test_case_id}")
+    if (
+        case["warmup"]["unit"] != unit
+        or statistics["unit"] != unit
+        or any(sample["unit"] != unit for sample in samples)
+    ):
+        raise ValueError(f"inconsistent measurement units for {test_case_id}")
     calculated = calculate_statistics(
         [sample["measurement"] for sample in samples]
     )
@@ -777,7 +798,7 @@ def load_jobs(input_dir, board_map, lava_url):
                 test_case_id = row["name"]
                 if not row["suite"].endswith("aiml-container-smoke"):
                     continue
-                if not test_case_id.startswith("tflite-"):
+                if not test_case_id.startswith(("tflite-", "qnn-", "genie-")):
                     continue
                 if test_case_id in api_results:
                     raise ValueError(
@@ -1183,6 +1204,7 @@ def write_summary(path, boards, provenance, previous, previous_boards):
             if result["result"] == "pass"
             and result["measurement"] is not None
             and result["unit"] == "ms"
+            and result["workload"] in ("label_image", "benchmark_model")
         ]
         if measured:
             labels = ", ".join(
@@ -1242,7 +1264,7 @@ def write_summary(path, boards, provenance, previous, previous_boards):
             stability = (
                 f"{statistics['stability']}; "
                 f"CV {statistics['trimmed_cv'] * 100:.2f}%; "
-                f"MAD {format_number(statistics['mad'])} ms"
+                f"MAD {format_number(statistics['mad'])} {result['unit']}"
                 if statistics
                 else "N/A"
             )
