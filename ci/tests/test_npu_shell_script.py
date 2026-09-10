@@ -216,6 +216,31 @@ class NpuShellScriptTest(unittest.TestCase):
         )
         self.assertEqual(len(self.lines(completed, "AIML_SAMPLE ")), 40)
 
+    def test_qnn_failure_includes_runner_output(self):
+        (self.device_root / "fastrpc-cdsp").touch()
+        self.write_executable(
+            self.qnn_runner,
+            """
+            #!/bin/bash
+            printf 'QNN backend initialization failed\\n' >&2
+            exit 1
+            """,
+        )
+
+        completed = self.run_script("Qualcomm Technologies, Inc. Robotics RB3gen2")
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn(
+            "ERROR: QNN HTP warm-up failed for "
+            "qnn-mediapipe-pose-detector-htp",
+            completed.stderr,
+        )
+        self.assertIn(
+            "ERROR: runner output for qnn-mediapipe-pose-detector-htp follows:",
+            completed.stderr,
+        )
+        self.assertIn("QNN backend initialization failed", completed.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

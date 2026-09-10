@@ -47,6 +47,15 @@ require_executable()
 		die "required executable not found: $1"
 }
 
+print_runner_output()
+{
+	local test_case_id=$1
+	local output_file=$2
+
+	printf 'ERROR: runner output for %s follows:\n' "$test_case_id" >&2
+	tail -n 100 -- "$output_file" >&2
+}
+
 validate_positive_integer()
 {
 	[[ "$2" =~ ^[1-9][0-9]*$ ]] ||
@@ -231,6 +240,7 @@ run_qnn_case()
 	if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-warmup" "$output_file" ||
 		! measurement=$(parse_qnn_measurement "$output_file"); then
 		printf 'ERROR: QNN HTP warm-up failed for %s\n' "$test_case_id" >&2
+		print_runner_output "$test_case_id" "$output_file"
 		emit_failure "$test_case_id"
 		return
 	fi
@@ -242,6 +252,7 @@ run_qnn_case()
 			! measurement=$(parse_qnn_measurement "$output_file"); then
 			printf 'ERROR: QNN HTP sample %d failed for %s\n' \
 				"$sample" "$test_case_id" >&2
+			print_runner_output "$test_case_id" "$output_file"
 			emit_failure "$test_case_id"
 			return
 		fi
@@ -343,6 +354,7 @@ run_genie_case()
 	if ! run_genie_sample "$bundle" "$profile" "$output_file" ||
 		! metrics=$(parse_genie_metrics "$profile"); then
 		printf 'ERROR: Genie warm-up failed\n' >&2
+		print_runner_output "$ttft_case" "$output_file"
 		emit_failure "$ttft_case"
 		emit_failure "$prefill_case"
 		emit_failure "$decode_case"
@@ -358,6 +370,7 @@ run_genie_case()
 		if ! run_genie_sample "$bundle" "$profile" "$output_file" ||
 			! metrics=$(parse_genie_metrics "$profile"); then
 			printf 'ERROR: Genie sample %d failed\n' "$sample" >&2
+			print_runner_output "$ttft_case" "$output_file"
 			emit_failure "$ttft_case"
 			emit_failure "$prefill_case"
 			emit_failure "$decode_case"
@@ -376,7 +389,7 @@ run_genie_case()
 	summarize "$decode_case" toks/sec "$decode_samples"
 }
 
-for command_name in awk grep mktemp python3 rm sha256sum timeout tr; do
+for command_name in awk grep mktemp python3 rm sha256sum tail timeout tr; do
 	require_command "$command_name"
 done
 validate_positive_integer NPU_TIMEOUT_SECONDS "$TIMEOUT_SECONDS"
