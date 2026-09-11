@@ -187,7 +187,7 @@ ENV RUSTICL_ENABLE=freedreno
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt -y upgrade
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install python3 wget curl unzip ca-certificates
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libatomic1 python3 wget curl unzip ca-certificates
 
 # Enable Backports repo, grab mesa from there
 COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
@@ -304,3 +304,17 @@ COPY --from=npu-models /opt/genie-bundles /opt/genie-bundles
 COPY --from=npu-models /opt/qnn-bundles /opt/qnn-bundles
 COPY run-npu-tests.sh /
 RUN chmod +x /run-npu-tests.sh
+RUN set -eu; \
+    export LD_LIBRARY_PATH=/usr/local/lib; \
+    for target in \
+      /usr/local/bin/qnn-net-run \
+      /usr/local/bin/genie-t2t-run \
+      /usr/local/lib/libGenie*.so \
+      /usr/local/lib/libQnn*.so; do \
+      [ -e "$target" ] || continue; \
+      dependencies="$(ldd "$target")"; \
+      printf 'Dynamic dependencies for %s:\n%s\n' "$target" "$dependencies"; \
+      if printf '%s\n' "$dependencies" | grep -F 'not found' >/dev/null; then \
+        exit 1; \
+      fi; \
+    done
