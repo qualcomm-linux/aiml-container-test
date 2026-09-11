@@ -187,6 +187,7 @@ run_qnn_sample()
 	local output_directory=$2
 	local output_file=$3
 	local profile_log="$output_directory/qnn-profiling-data.log"
+	local profile_csv="$output_directory/qnn-basic.csv"
 
 	(
 		cd "$bundle"
@@ -198,8 +199,23 @@ run_qnn_sample()
 			--output_dir "$output_directory" \
 			--profiling_level basic
 		"$QNN_PROFILE_VIEWER" \
-			--input_log "$profile_log"
+			--input_log "$profile_log" \
+			--output "$profile_csv"
 	) >"$output_file" 2>&1
+}
+
+print_qnn_profile_csv()
+{
+	local profile_csv=$1
+
+	if [[ ! -s "$profile_csv" ]]; then
+		printf 'WARNING: QNN profile viewer did not create CSV output: %s\n' \
+			"$profile_csv" >&2
+		return
+	fi
+	printf 'QNN_PROFILE_CSV_BEGIN path=%s\n' "$profile_csv"
+	cat "$profile_csv"
+	printf 'QNN_PROFILE_CSV_END\n'
 }
 
 parse_qnn_measurement()
@@ -254,6 +270,7 @@ run_qnn_case()
 	fi
 	printf 'AIML_WARMUP test_case_id=%s measurement=%s units=ms\n' \
 		"$test_case_id" "$measurement"
+	print_qnn_profile_csv "$temporary_directory/qnn-warmup/qnn-basic.csv"
 
 	for ((sample = 1; sample <= OUTER_SAMPLE_COUNT; sample++)); do
 		if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-$sample" "$output_file" ||
@@ -397,7 +414,7 @@ run_genie_case()
 	summarize "$decode_case" toks/sec "$decode_samples"
 }
 
-for command_name in awk grep mktemp python3 rm sha256sum tail timeout tr; do
+for command_name in awk cat grep mktemp python3 rm sha256sum tail timeout tr; do
 	require_command "$command_name"
 done
 validate_positive_integer NPU_TIMEOUT_SECONDS "$TIMEOUT_SECONDS"

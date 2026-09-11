@@ -108,12 +108,15 @@ class NpuShellScriptTest(unittest.TestCase):
             #!/bin/bash
             set -eu
             input=
+            output=
             while (($#)); do
                 case "$1" in
                     --input_log) input=$2; shift 2 ;;
+                    --output) output=$2; shift 2 ;;
                     *) shift ;;
                 esac
             done
+            cp "$input" "$output"
             cat "$input"
             """,
         )
@@ -207,6 +210,8 @@ class NpuShellScriptTest(unittest.TestCase):
             ],
         )
         self.assertEqual(len(self.lines(completed, "AIML_SAMPLE ")), 10)
+        self.assertIn("QNN_PROFILE_CSV_BEGIN ", completed.stdout)
+        self.assertIn("Execute Stats (Average):", completed.stdout)
         self.assertIn(
             "AIML_STATS test_case_id=qnn-mediapipe-pose-detector-htp "
             "count=10 discarded_low=2.0 discarded_high=11.0",
