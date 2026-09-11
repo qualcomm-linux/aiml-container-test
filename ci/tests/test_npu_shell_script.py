@@ -97,7 +97,7 @@ class NpuShellScriptTest(unittest.TestCase):
                 esac
             done
             mkdir -p "$output_directory"
-            printf 'QNN,Execute,%d\\n' "$((call * 1000))" \
+            printf 'Execute Stats (Average):\\n    NetRun: %d us\\n' "$((call * 1000))" \
                 >"$output_directory/qnn-profiling-data.log"
             """,
         )
@@ -108,15 +108,13 @@ class NpuShellScriptTest(unittest.TestCase):
             #!/bin/bash
             set -eu
             input=
-            output=
             while (($#)); do
                 case "$1" in
                     --input_log) input=$2; shift 2 ;;
-                    --output) output=$2; shift 2 ;;
                     *) shift ;;
                 esac
             done
-            cp "$input" "$output"
+            cat "$input"
             """,
         )
         self.genie_runner = self.bin_dir / "genie-t2t-run"
