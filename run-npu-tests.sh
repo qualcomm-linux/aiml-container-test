@@ -221,14 +221,14 @@ print_qnn_profile_csv()
 parse_qnn_measurement()
 {
 	awk '
-		/^Execute Stats \(Average\):$/ {
+		/Execute Stats \(Average\):/ {
 			in_execute_average = 1
 			next
 		}
-		in_execute_average && /^[[:space:]]*NetRun:[[:space:]]*/ {
+		in_execute_average && /NetRun:[[:space:]]*[0-9]/ {
 			value = $0
-			sub(/^[[:space:]]*NetRun:[[:space:]]*/, "", value)
-			sub(/[[:space:]]+us[[:space:]]*$/, "", value)
+			sub(/^.*NetRun:[[:space:]]*/, "", value)
+			sub(/[[:space:]]+us[[:space:]\r]*$/, "", value)
 			if (value !~ /^[0-9]+([.][0-9]+)?$/) exit 1
 			if (found++) exit 1
 		}
@@ -261,16 +261,22 @@ run_qnn_case()
 		"$bundle/pose_detector.bin"
 
 	printf 'Running unmeasured outer warm-up for %s.\n' "$test_case_id"
-	if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-warmup" "$output_file" ||
-		! measurement=$(parse_qnn_measurement "$output_file"); then
+	if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-warmup" "$output_file"; then
 		printf 'ERROR: QNN HTP warm-up failed for %s\n' "$test_case_id" >&2
+		print_runner_output "$test_case_id" "$output_file"
+		emit_failure "$test_case_id"
+		return
+	fi
+	print_qnn_profile_csv "$temporary_directory/qnn-warmup/qnn-basic.csv"
+	if ! measurement=$(parse_qnn_measurement "$output_file"); then
+		printf 'ERROR: could not parse QNN HTP warm-up latency for %s\n' \
+			"$test_case_id" >&2
 		print_runner_output "$test_case_id" "$output_file"
 		emit_failure "$test_case_id"
 		return
 	fi
 	printf 'AIML_WARMUP test_case_id=%s measurement=%s units=ms\n' \
 		"$test_case_id" "$measurement"
-	print_qnn_profile_csv "$temporary_directory/qnn-warmup/qnn-basic.csv"
 
 	for ((sample = 1; sample <= OUTER_SAMPLE_COUNT; sample++)); do
 		if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-$sample" "$output_file" ||
