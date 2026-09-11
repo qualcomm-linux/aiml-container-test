@@ -279,9 +279,12 @@ EOF
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
-# Install the FastRPC userspace, its executable CDSP diagnostics, and the
-# unversioned domain-library linker names required by QAIRT's DSP stubs.
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests libfastrpc-dev
+# Install the FastRPC userspace and its executable CDSP diagnostics.
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
+# QAIRT's DSP stubs link to the unversioned CDSP library name, while the
+# runtime package intentionally installs only its versioned shared object.
+RUN ln -s -- /usr/lib/aarch64-linux-gnu/libcdsprpc.so.1.0.0 \
+    /usr/lib/aarch64-linux-gnu/libcdsprpc.so
 
 # Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
 COPY --from=fastrpc-build /usr/local/bin /usr/local/bin
