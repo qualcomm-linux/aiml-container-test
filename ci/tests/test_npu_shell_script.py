@@ -97,7 +97,13 @@ class NpuShellScriptTest(unittest.TestCase):
                 esac
             done
             mkdir -p "$output_directory"
-            printf 'Execute Stats (Average):\\n    NetRun: %d us\\n' "$((call * 1000))" \
+            printf '%s\\n' \
+                'Execute Stats (Average):' \
+                "    NetRun: $((call * 1000)) us" \
+                'Execute Stats (Min):' \
+                "    NetRun: $((call * 900)) us" \
+                'Execute Stats (Max):' \
+                "    NetRun: $((call * 1100)) us" \
                 >"$output_directory/qnn-profiling-data.log"
             """,
         )

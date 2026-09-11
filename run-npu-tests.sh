@@ -225,6 +225,10 @@ parse_qnn_measurement()
 			in_execute_average = 1
 			next
 		}
+		in_execute_average && /Execute Stats \(/ {
+			in_execute_average = 0
+			next
+		}
 		in_execute_average && /NetRun:[[:space:]]*[0-9]/ {
 			value = $0
 			sub(/^.*NetRun:[[:space:]]*/, "", value)
