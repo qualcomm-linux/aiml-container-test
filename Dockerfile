@@ -279,8 +279,9 @@ EOF
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
-# Install the FastRPC userspace and its executable CDSP diagnostics.
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
+# Install the FastRPC userspace, its executable CDSP diagnostics, and the
+# unversioned domain-library linker names required by QAIRT's DSP stubs.
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests libfastrpc-dev
 
 # Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
 COPY --from=fastrpc-build /usr/local/bin /usr/local/bin
@@ -306,6 +307,7 @@ COPY run-npu-tests.sh /
 RUN chmod +x /run-npu-tests.sh
 RUN set -eu; \
     export LD_LIBRARY_PATH=/usr/local/lib; \
+    failed=0; \
     for target in \
       /usr/local/bin/qnn-net-run \
       /usr/local/bin/genie-t2t-run \
@@ -315,6 +317,7 @@ RUN set -eu; \
       dependencies="$(ldd "$target")"; \
       printf 'Dynamic dependencies for %s:\n%s\n' "$target" "$dependencies"; \
       if printf '%s\n' "$dependencies" | grep -F 'not found' >/dev/null; then \
-        exit 1; \
+        failed=1; \
       fi; \
-    done
+    done; \
+    test "$failed" -eq 0
