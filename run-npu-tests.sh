@@ -10,6 +10,7 @@ GENIE_ROOT=${GENIE_ROOT:-/opt/genie-bundles/qwen3-0.6b}
 QNN_ROOT=${QNN_ROOT:-/opt/qnn-bundles}
 GENIE_T2T_RUN=${GENIE_T2T_RUN:-/usr/local/bin/genie-t2t-run}
 QNN_NET_RUN=${QNN_NET_RUN:-/usr/local/bin/qnn-net-run}
+QNN_PROFILE_VIEWER=${QNN_PROFILE_VIEWER:-/usr/local/bin/qnn-profile-viewer}
 QNN_HTP_BACKEND=${QNN_HTP_BACKEND:-/usr/local/lib/libQnnHtp.so}
 QAIRT_VERSION_FILE=${QAIRT_VERSION_FILE:-/usr/share/aiml-container/qairt-version}
 MACHINE_NAME=${MACHINE_NAME:-}
@@ -185,6 +186,8 @@ run_qnn_sample()
 	local bundle=$1
 	local output_directory=$2
 	local output_file=$3
+	local profile_log="$output_directory/qnn-profiling-data.log"
+	local profile_csv="$output_directory/qnn-profiling-data.csv"
 
 	(
 		cd "$bundle"
@@ -195,19 +198,21 @@ run_qnn_sample()
 			--input_list input_list.txt \
 			--output_dir "$output_directory" \
 			--profiling_level basic
+		"$QNN_PROFILE_VIEWER" \
+			--input_log "$profile_log" \
+			--output "$profile_csv"
 	) >"$output_file" 2>&1
 }
 
 parse_qnn_measurement()
 {
 	awk '
-		index($0, "Inference (avg):") {
-			line = $0
-			sub(/^.*Inference \(avg\):[[:space:]]*/, "", line)
-			sub(/[^0-9.].*$/, "", line)
-			if (line !~ /^[0-9]+([.][0-9]+)?$/) exit 1
+		BEGIN { FS = "," }
+		tolower($0) ~ /,execute,/ {
+			value = $3
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			if (value !~ /^[0-9]+([.][0-9]+)?$/) exit 1
 			if (found++) exit 1
-			value = line
 		}
 		END {
 			if (found != 1 || value !~ /^[0-9]+([.][0-9]+)?$/) exit 1
@@ -227,6 +232,7 @@ run_qnn_case()
 	local measurement
 
 	require_executable "$QNN_NET_RUN"
+	require_executable "$QNN_PROFILE_VIEWER"
 	require_file "$QNN_HTP_BACKEND"
 	require_file "$bundle/pose_detector.bin"
 	require_file "$bundle/input_list.txt"
@@ -238,7 +244,7 @@ run_qnn_case()
 
 	printf 'Running unmeasured outer warm-up for %s.\n' "$test_case_id"
 	if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-warmup" "$output_file" ||
-		! measurement=$(parse_qnn_measurement "$output_file"); then
+		! measurement=$(parse_qnn_measurement "$temporary_directory/qnn-warmup/qnn-profiling-data.csv"); then
 		printf 'ERROR: QNN HTP warm-up failed for %s\n' "$test_case_id" >&2
 		print_runner_output "$test_case_id" "$output_file"
 		emit_failure "$test_case_id"
@@ -249,7 +255,7 @@ run_qnn_case()
 
 	for ((sample = 1; sample <= OUTER_SAMPLE_COUNT; sample++)); do
 		if ! run_qnn_sample "$bundle" "$temporary_directory/qnn-$sample" "$output_file" ||
-			! measurement=$(parse_qnn_measurement "$output_file"); then
+			! measurement=$(parse_qnn_measurement "$temporary_directory/qnn-$sample/qnn-profiling-data.csv"); then
 			printf 'ERROR: QNN HTP sample %d failed for %s\n' \
 				"$sample" "$test_case_id" >&2
 			print_runner_output "$test_case_id" "$output_file"

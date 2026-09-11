@@ -89,7 +89,34 @@ class NpuShellScriptTest(unittest.TestCase):
             [[ ! -f "$counter" ]] || call=$(<"$counter")
             call=$((call + 1))
             printf '%s\\n' "$call" >"$counter"
-            printf 'Inference (avg): %d us\\n' "$((call * 1000))"
+            output_directory=
+            while (($#)); do
+                case "$1" in
+                    --output_dir) output_directory=$2; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            mkdir -p "$output_directory"
+            printf 'QNN,Execute,%d\\n' "$((call * 1000))" \
+                >"$output_directory/qnn-profiling-data.log"
+            """,
+        )
+        self.qnn_profile_viewer = self.bin_dir / "qnn-profile-viewer"
+        self.write_executable(
+            self.qnn_profile_viewer,
+            """
+            #!/bin/bash
+            set -eu
+            input=
+            output=
+            while (($#)); do
+                case "$1" in
+                    --input_log) input=$2; shift 2 ;;
+                    --output) output=$2; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            cp "$input" "$output"
             """,
         )
         self.genie_runner = self.bin_dir / "genie-t2t-run"
@@ -134,6 +161,7 @@ class NpuShellScriptTest(unittest.TestCase):
                 "QNN_ROOT": str(self.qnn_root),
                 "GENIE_T2T_RUN": str(self.genie_runner),
                 "QNN_NET_RUN": str(self.qnn_runner),
+                "QNN_PROFILE_VIEWER": str(self.qnn_profile_viewer),
                 "QNN_HTP_BACKEND": str(self.backend),
                 "QAIRT_VERSION_FILE": str(self.qairt_version),
                 "MACHINE_NAME": machine_name,

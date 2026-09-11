@@ -105,6 +105,7 @@ RUN cd ~/build ; \
        rm ~/build/v${QAIRT_VERSION}.zip ; \
        cp -v ~/build/qairt/${QAIRT_VERSION}/bin/aarch64-oe-linux-gcc11.2/genie-t2t-run /usr/local/bin/ ; \
        cp -v ~/build/qairt/${QAIRT_VERSION}/bin/aarch64-oe-linux-gcc11.2/qnn-net-run /usr/local/bin/ ; \
+       cp -v ~/build/qairt/${QAIRT_VERSION}/bin/aarch64-oe-linux-gcc11.2/qnn-profile-viewer /usr/local/bin/ ; \
        cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
        cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
        printf '%s\n' "${QAIRT_VERSION}" >/usr/share/aiml-container/qairt-version ; \
@@ -313,6 +314,7 @@ RUN set -eu; \
     failed=0; \
     for target in \
       /usr/local/bin/qnn-net-run \
+      /usr/local/bin/qnn-profile-viewer \
       /usr/local/bin/genie-t2t-run \
       /usr/local/lib/libGenie*.so \
       /usr/local/lib/libQnn*.so; do \
