@@ -26,6 +26,7 @@ def run_fixture(run_id, attempt=1, created_at="2026-09-04T06:50:42Z"):
         "head_branch": "main",
         "head_sha": "a" * 40,
         "event": "schedule",
+        "status": "completed",
         "conclusion": "success",
         "path": ".github/workflows/linux-arduino.yml",
         "head_repository": {"full_name": "qualcomm-linux/qcom-deb-images"},
@@ -55,9 +56,11 @@ class FakeClient:
         self.artifacts = artifacts
         self.archives = archives
         self.downloads = []
+        self.workflow_queries = []
 
     def get_json(self, endpoint, fields=None):
         if "/workflows/" in endpoint:
+            self.workflow_queries.append(fields)
             page = int(fields["page"])
             return {"workflow_runs": self.runs if page == 1 else []}
         if endpoint.endswith("/artifacts"):
@@ -105,7 +108,7 @@ class ResolveQcomImageTest(unittest.TestCase):
             "path": ".github/workflows/build.yml",
             "event": "workflow_dispatch",
             "head_branch": "feature",
-            "conclusion": "failure",
+            "status": "in_progress",
         }
         for field, value in invalid_values.items():
             with self.subTest(field=field):
@@ -115,6 +118,70 @@ class ResolveQcomImageTest(unittest.TestCase):
                     RESOLVER.ResolutionError, "does not match the trusted"
                 ):
                     RESOLVER.validate_run(run, "arduino", NOW)
+
+    def test_generic_accepts_scheduled_and_legacy_triggers(self):
+        for event in ("schedule", "workflow_run"):
+            with self.subTest(event=event):
+                run = run_fixture(123)
+                run.update(path=".github/workflows/build.yml", event=event)
+                self.assertEqual(RESOLVER.validate_run(run, "generic", NOW), 5)
+
+    def test_generic_rejects_untrusted_provenance_and_incomplete_runs(self):
+        invalid_values = {
+            "head_repository": {"full_name": "example/qcom-deb-images"},
+            "path": ".github/workflows/build-debian.yml",
+            "event": "workflow_dispatch",
+            "head_branch": "feature",
+            "status": "in_progress",
+        }
+        for field, value in invalid_values.items():
+            with self.subTest(field=field):
+                run = run_fixture(123)
+                run["path"] = ".github/workflows/build.yml"
+                run[field] = value
+                with self.assertRaisesRegex(
+                    RESOLVER.ResolutionError, "does not match the trusted"
+                ):
+                    RESOLVER.validate_run(run, "generic", NOW)
+
+    def test_publication_is_accepted_independently_of_workflow_conclusion(self):
+        for source in ("generic", "arduino"):
+            for conclusion in ("success", "failure", "cancelled"):
+                with self.subTest(source=source, conclusion=conclusion):
+                    run = run_fixture(123)
+                    run["conclusion"] = conclusion
+                    if source == "generic":
+                        run["path"] = ".github/workflows/build.yml"
+                    artifact = artifact_fixture(10, "2026-09-04T07:00:00Z")
+                    pointer = (
+                        "https://qli-prod-artifacts.qualcomm.com/qcom-prd-gh-artifacts/"
+                        "qualcomm-linux/qcom-deb-images/123-1/\n"
+                    )
+                    client = FakeClient(
+                        [run], {123: [artifact]}, {10: pointer_zip(pointer)}
+                    )
+                    probed = []
+                    result = RESOLVER.resolve(
+                        source, "trixie", "", client,
+                        probe=lambda url, suite: probed.append((url, suite)),
+                        now=NOW,
+                    )
+                    self.assertEqual(result.run["id"], 123)
+                    self.assertEqual(probed, [(result.build_url, "trixie")])
+                    self.assertEqual(client.workflow_queries[0]["status"], "completed")
+
+    def test_failed_workflow_without_publication_is_rejected(self):
+        run = run_fixture(123)
+        run["conclusion"] = "failure"
+        client = FakeClient([run], {}, {})
+        with self.assertRaisesRegex(
+            RESOLVER.ResolutionError, "no live build_url artifact"
+        ):
+            RESOLVER.resolve(
+                "arduino", "trixie", "123", client,
+                probe=lambda _url, _suite: self.fail("must not probe"),
+                now=NOW,
+            )
 
     def test_rerun_uses_publication_attempt_from_pointer(self):
         run = run_fixture(33846066976, attempt=2)
@@ -198,6 +265,7 @@ class ResolveQcomImageTest(unittest.TestCase):
 
     def test_missing_suite_payload_falls_back_to_older_run(self):
         newest = run_fixture(200, created_at="2026-09-04T10:00:00Z")
+        newest["conclusion"] = "failure"
         older = run_fixture(100, created_at="2026-09-04T09:00:00Z")
         artifacts = {
             200: [artifact_fixture(20, "2026-09-04T10:10:00Z")],

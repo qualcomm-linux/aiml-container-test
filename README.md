@@ -55,9 +55,12 @@ GPU device is unavailable.
 
 CI tracks TensorFlow Lite latency per board in LAVA. Measurements and comparisons
 are published with each [Daily LAVA workflow][daily] run.
-LAVA image resolution accepts only successful trusted `qcom-deb-images` workflow
-runs from `main` that are no more than 14 days old; all artifact pointer and image
-validation remains mandatory.
+LAVA image resolution selects valid publications from completed trusted
+`qcom-deb-images` workflow runs on `main` that are no more than 14 days old,
+independently of upstream test results. A live `build_url` pointer and an
+accessible image payload for the requested suite remain mandatory. Generic
+images come from scheduled `build.yml` runs (legacy `workflow_run` runs are
+also accepted); Arduino images come from scheduled `linux-arduino.yml` runs.
 
 ## License
 

@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       run_id:
-        description: Successful qcom-deb-images run ID from the last 14 days; empty selects the latest
+        description: Completed qcom-deb-images run ID with a valid publication from the last 14 days; empty selects the latest
         required: false
         type: string
       source:
@@ -66,7 +66,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Resolve latest successful image build
+      - name: Resolve latest published image
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
