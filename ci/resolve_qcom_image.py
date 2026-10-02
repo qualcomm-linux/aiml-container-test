@@ -27,12 +27,12 @@ SOURCE_CONFIG = {
     "generic": {
         "workflow_file": "build.yml",
         "workflow_path": ".github/workflows/build.yml",
-        "event": "workflow_run",
+        "events": ("schedule", "workflow_run"),
     },
     "arduino": {
         "workflow_file": "linux-arduino.yml",
         "workflow_path": ".github/workflows/linux-arduino.yml",
-        "event": "schedule",
+        "events": ("schedule",),
     },
 }
 
@@ -128,18 +128,16 @@ def validate_run(run, source, now):
     expected = {
         "repository": REPOSITORY,
         "workflow": config["workflow_path"],
-        "event": config["event"],
         "branch": "main",
-        "conclusion": "success",
+        "status": "completed",
     }
     actual = {
         "repository": (run.get("head_repository") or {}).get("full_name"),
         "workflow": run.get("path"),
-        "event": run.get("event"),
         "branch": run.get("head_branch"),
-        "conclusion": run.get("conclusion"),
+        "status": run.get("status"),
     }
-    if actual != expected:
+    if actual != expected or run.get("event") not in config["events"]:
         raise ResolutionError(
             f"run {run.get('id', '<unknown>')} does not match the trusted "
             f"qcom-deb-images {source} workflow"
@@ -363,7 +361,7 @@ def automatic_runs(source, client, now):
             f"repos/{REPOSITORY}/actions/workflows/{config['workflow_file']}/runs",
             {
                 "branch": "main",
-                "status": "success",
+                "status": "completed",
                 "per_page": 100,
                 "page": page,
             },
@@ -438,6 +436,7 @@ def write_result(resolution, source, output_path, summary_path):
     summary = [
         "qcom-deb-images input:",
         f"  Image source: {source}",
+        f"  Upstream workflow conclusion: {run.get('conclusion')}",
         (
             f"  Run: {run['id']} workflow attempt {run['run_attempt']} "
             f"({run['html_url']})"
