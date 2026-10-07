@@ -59,12 +59,13 @@ RUN cd ~/build/tensorflow ; \
 # Grab bazel binaries and start the build.
 RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.1/bazel-7.4.1-linux-arm64
 RUN chmod +x /usr/local/bin/bazel
-RUN cd ~/build/tensorflow &&  bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite:libtensorflowlite.so ; \
-    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/c:libtensorflowlite_c.so ; \
-    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so ; \
-    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/examples/label_image:label_image ; \
-    bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/tools/benchmark:benchmark_model
-RUN cd ~/build/tensorflow && bazel build --copt -DCL_DELEGATE_NO_GL //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so
+RUN cd ~/build/tensorflow && \
+    bazel --batch build --copt=-DCL_DELEGATE_NO_GL \
+        //tensorflow/lite:libtensorflowlite.so \
+        //tensorflow/lite/c:libtensorflowlite_c.so \
+        //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so \
+        //tensorflow/lite/examples/label_image:label_image \
+        //tensorflow/lite/tools/benchmark:benchmark_model
 
 # This likely needs a new place so we can delete ~/build/tensorflow
 RUN cd ~/build/tensorflow ; \
