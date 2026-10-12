@@ -319,7 +319,7 @@ jobs:
           printf '%s\n' "$scope_matrix" >scope-matrix.json
 
       - name: Upload scope matrix
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lava-scope-matrix-${{ inputs.suite }}-${{ inputs.report_scope }}
           path: scope-matrix.json
@@ -506,7 +506,7 @@ jobs:
 
       - name: Upload LAVA execution status
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lava-execution-status-${{ inputs.suite }}-${{ matrix.scope }}-${{ matrix.slug }}
           path: lava-execution-status.json
@@ -927,7 +927,7 @@ jobs:
         id: upload_generic_report
         if: always() && steps.reports.outputs.generic_selected == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tflite-performance-${{ inputs.suite }}-generic-${{ steps.reports.outputs.generic_board_key }}
           path: performance-results/generic
@@ -939,7 +939,7 @@ jobs:
         id: upload_arduino_report
         if: always() && steps.reports.outputs.arduino_selected == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tflite-performance-${{ inputs.suite }}-arduino-${{ steps.reports.outputs.arduino_board_key }}
           path: performance-results/arduino
