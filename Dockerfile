@@ -67,17 +67,22 @@ RUN cd ~/build/tensorflow && \
         //tensorflow/lite/examples/label_image:label_image \
         //tensorflow/lite/tools/benchmark:benchmark_model
 
-# This likely needs a new place so we can delete ~/build/tensorflow
-RUN cd ~/build/tensorflow ; \
-    cp tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp bazel-bin/tensorflow/lite/examples/label_image/ ; \
-    cd bazel-bin/tensorflow/lite/examples/label_image ; \
-    wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    rm *.zip
-
-RUN git -C ~/build/tensorflow rev-parse HEAD \
-        >~/build/tensorflow/bazel-bin/tensorflow/TFLITE_COMMIT ; \
-    mv ~/build/tensorflow/bazel-bin/tensorflow ~
+RUN mkdir -p /tmp/tflite && \
+    cd ~/build/tensorflow/bazel-bin/tensorflow && \
+    cp --parents \
+        lite/libtensorflowlite.so \
+        lite/c/libtensorflowlite_c.so \
+        lite/delegates/gpu/libtensorflowlite_gpu_delegate.so \
+        lite/examples/label_image/label_image \
+        lite/tools/benchmark/benchmark_model \
+        /tmp/tflite && \
+    cp ~/build/tensorflow/tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp \
+        /tmp/tflite/lite/examples/label_image/ && \
+    git -C ~/build/tensorflow rev-parse HEAD >/tmp/tflite/TFLITE_COMMIT && \
+    cd /tmp/tflite/lite/examples/label_image && \
+    wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip && \
+    unzip mobilenet_v1_224_android_quant_2017_11_08.zip && \
+    rm mobilenet_v1_224_android_quant_2017_11_08.zip
 
 # Remove build folder
 RUN rm -rf ~/build
@@ -176,7 +181,7 @@ RUN apt-get update && \
 COPY --from=models /root/models /root/models
 
 # Install tensorflow build, no proper debian package
-COPY --from=build /root/tensorflow /root/tensorflow
+COPY --from=build /tmp/tflite /root/tensorflow
 COPY run-tflite.sh /
 COPY benchmark-tflite.sh /
 COPY install-gstreamer.sh /
