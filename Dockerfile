@@ -164,11 +164,13 @@ Pin: release n=trixie-backports
 Pin-Priority: 900
 EOF
 
-# Update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-
-# Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
+# Install runtime tools and Mesa without retaining package indexes in a layer.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
+        libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy models from models container
 COPY --from=models /root/models /root/models
@@ -179,10 +181,6 @@ COPY run-tflite.sh /
 COPY benchmark-tflite.sh /
 COPY install-gstreamer.sh /
 RUN chmod +x /*.sh
-
-# Remove cached files
-RUN rm ~/.cache -rf
-RUN apt clean
 
 # Test tensorflow
 RUN cd ~/tensorflow/lite/examples/label_image ; \
@@ -232,11 +230,11 @@ Signed-By:
  -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
-# Update
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-
 # Install the FastRPC userspace and its executable CDSP diagnostics.
-RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install fastrpc-tests && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
 COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
@@ -246,7 +244,3 @@ RUN find /usr/local/lib
 COPY --from=fastrpc-build /usr/lib/dsp /usr/lib/dsp
 COPY --from=fastrpc-build /usr/share/aiml-container /usr/share/aiml-container
 RUN find /usr/lib/dsp
-
-# Remove cached files
-RUN rm ~/.cache -rf
-RUN apt clean
