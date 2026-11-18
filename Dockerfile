@@ -1,83 +1,24 @@
-FROM debian:trixie-slim AS build
+#######################################################################
 
-RUN mkdir ~/build
-
-# Add deb-src for everything
-RUN sed -Ei 's/^Types: deb$/Types: deb deb-src/'  /etc/apt/sources.list.d/debian.sources
+FROM debian:trixie-slim AS fastrpc-build
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
 # Install build tools
-RUN DEBIAN_FRONTEND=noninteractive apt -y install git meson wget curl unzip
+RUN DEBIAN_FRONTEND=noninteractive apt -y install git build-essential libtool wget unzip libyaml-dev libbsd-dev pkg-config
 
-# Enable Backports repo, grab mesa from there
-COPY <<EOF /etc/apt/sources.list.d/trixie-backports.sources
-Types: deb deb-src
-URIs: http://deb.debian.org/debian
-Suites: trixie-backports
-Components: main
-Enabled: yes
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-EOF
-
-COPY <<EOF /etc/apt/preferences.d/debian-backports.pref
-# for binary packages built from these source packages, score the version from
-# Debian backports higher as to get hardware enabled or better hardware support
-
-Package: src:alsa-ucm-conf:any src:firmware-free:any src:firmware-nonfree:any src:linux:any src:linux-signed-arm64:any src:mesa:any
-Pin: release n=trixie-backports
-Pin-Priority: 900
-EOF
-
-
-# Update again
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-
-# Install the basic mesa dependencies to make our build work
-RUN DEBIAN_FRONTEND=noninteractive apt -y install mesa-common-dev libegl-dev libgles-dev cmake ninja-build
-
-
-RUN git config --global user.email "container@nohardware.com"
-RUN git config --global user.name "Container Entity"
-
-# Fetch & patch tflite
+# Build & Install fastrpc
+RUN mkdir ~/build
 RUN cd ~/build ; \
-    git clone https://github.com/tensorflow/tensorflow.git --single-branch -b r2.20
-COPY patches/0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch /root/build/tensorflow/
-COPY patches/0002-PATCH-tensorflow-c-library-enable-delegates.patch /root/build/tensorflow/
-RUN cd ~/build/tensorflow ; \
-    git remote add robclark https://github.com/robclark/tensorflow.git ; \
-    git fetch robclark rusticl-fixes ; \
-    git merge robclark/rusticl-fixes && git rebase origin/r2.20 ; \
-    git am 0001-OpenCL-wrapper-try-loading-libOpenCL.so.1-if-libOpen.patch 0002-PATCH-tensorflow-c-library-enable-delegates.patch
+	git clone https://github.com/qualcomm/fastrpc.git ; \
+        cd fastrpc ; \
+        GITCOMPILE_NO_MAKE=yes ./gitcompile ; \
+        make -j$(nproc) && \
+        make install DESTDIR=/opt/fastrpc ; \
+        rm ~/build/fastrpc -rf
 
-RUN cd ~/build/tensorflow ; \
-    mkdir -p /usr/src ; \
-    git archive --format=tar.gz --output=/usr/src/tensorflow-lite-2.20.tar.gz --prefix=tensorflow-2.20/ HEAD -v
-
-# Grab bazel binaries and start the build.
-RUN wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazel/releases/download/7.4.1/bazel-7.4.1-linux-arm64
-RUN chmod +x /usr/local/bin/bazel
-RUN cd ~/build/tensorflow && \
-    bazel --batch build --copt=-DCL_DELEGATE_NO_GL \
-        //tensorflow/lite:libtensorflowlite.so \
-        //tensorflow/lite/c:libtensorflowlite_c.so \
-        //tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so \
-        //tensorflow/lite/examples/label_image:label_image \
-        //tensorflow/lite/tools/benchmark:benchmark_model
-
-# This likely needs a new place so we can delete ~/build/tensorflow
-RUN cd ~/build/tensorflow ; \
-    cp tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp bazel-bin/tensorflow/lite/examples/label_image/ ; \
-    cd bazel-bin/tensorflow/lite/examples/label_image ; \
-    wget https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    unzip mobilenet_v1_224_android_quant_2017_11_08.zip ; \
-    rm *.zip
-
-RUN git -C ~/build/tensorflow rev-parse HEAD \
-        >~/build/tensorflow/bazel-bin/tensorflow/TFLITE_COMMIT ; \
-    mv ~/build/tensorflow/bazel-bin/tensorflow ~
+RUN find /opt/
 
 # Remove build folder
 RUN rm -rf ~/build
@@ -87,8 +28,39 @@ RUN rm ~/.cache -rf
 RUN apt clean
 
 #######################################################################
+
+FROM debian-trixie-slim AS fastrpc-deb
+
+# Add repo containing fastrpc, dsp binaries and tflite
+COPY <<EOF /etc/apt/sources.list.d/debusine.sources
+Types: deb deb-src
+URIs: https://deb.debusine.debian.net/debian/r-rbasak-qcom-hexagon-stack-2
+Suites: sid
+Components: main non-free-firmware
+Signed-By:
+ -----BEGIN PGP PUBLIC KEY BLOCK-----
+ .
+ mDMEaWpOVhYJKwYBBAHaRw8BAQdA6gdtyg0BKTS9EA9CAbbY3gk7bOYKY74Clfak
+ 3FjWn220PEFyY2hpdmUgc2lnbmluZyBrZXkgZm9yIGRlYmlhbi9yLXJiYXNhay1x
+ Y29tLWhleGFnb24tc3RhY2stMoiQBBMWCgA4FiEEWi95OlWxjLyNwWscPETQboDo
+ XeEFAmlqTlYCGwMFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AACgkQPETQboDoXeFL
+ AQD+Pm5ERzQPJRdxcqekaUVbqKrbyo1i7NPztV0j0YnyDFUA/24Ms1ZS8eV1um+R
+ pqm6Uf5gvyZjJrjMGZWx/hqvriED
+ =P90u
+ -----END PGP PUBLIC KEY BLOCK-----
+EOF
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
  
-FROM debian:trixie-slim AS fastrpc-build
+FROM debian:trixie-slim AS qnn-install
 
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
@@ -96,19 +68,18 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install build tools
 RUN DEBIAN_FRONTEND=noninteractive apt -y install git wget unzip
 
-# Install QAIRT host libraries and DSP skeletons for every supported Hexagon architecture
-ARG QAIRT_VERSION=2.47.0.260601
-RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/local/lib /usr/share/aiml-container
+# Install QNN
+RUN mkdir -p ~/build /usr/lib/dsp/cdsp /usr/share/qcom /usr/local/lib -p
 RUN cd ~/build ; \
-       wget "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip"; \
-       unzip "v${QAIRT_VERSION}.zip" ; \
-       rm ~/build/v${QAIRT_VERSION}.zip ; \
-       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ;  \
-       cp -v ~/build/qairt/${QAIRT_VERSION}/lib/hexagon-v*/unsigned/* /usr/lib/dsp/cdsp/ ; \
-       printf '%s\n' "${QAIRT_VERSION}" >/usr/share/aiml-container/qairt-version ; \
-       rm /usr/local/lib/libSNPE* -rf ; \
-       rm /usr/local/lib/libSnpe* -rf ; \
-       rm ~/build/qairt -rf
+	export QNNVERSION="2.43.0.260128" ; \
+	wget https://apigwx-aws.qualcomm.com/qsc/public/v1/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QNNVERSION}/v${QNNVERSION}.zip; \
+	unzip v${QNNVERSION}.zip ; \
+	rm ~/build/v${QNNVERSION}.zip ; \
+	rm ~/build/qairt/${QNNVERSION}/lib/aarch64-oe-linux-gcc11.2/libSNPE*; \
+	rm ~/build/qairt/${QNNVERSION}/lib/aarch64-oe-linux-gcc11.2/libSnpe*; \
+	cp ~/build/qairt/${QNNVERSION}/lib/aarch64-oe-linux-gcc11.2/* /usr/local/lib/ ; \
+	cp ~/build/qairt/*/lib/hexagon-v* /usr/share/qcom/ -rf; \
+	rm ~/build/qairt -rf
 
 # Install hexagon binaries and copy binaries for RB3Gen2 : TODO add for others
 RUN cd ~/build; \
@@ -123,14 +94,6 @@ RUN rm -rf ~/build
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
-
-#######################################################################
-
-FROM debian:bookworm-slim AS models
-
-# QAI Hub exports require user credentials. Keep the build reproducible until
-# pre-exported models can be supplied without embedding credentials in an image.
-RUN mkdir -p /root/models
 
 #######################################################################
 
@@ -170,29 +133,43 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update
 # Install the basic mesa dependencies to make our build work
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libgl1-mesa-dri libgles2 mesa-opencl-icd clpeak
 
-# Copy models from models container
-COPY --from=models /root/models /root/models
-
-# Install tensorflow build, no proper debian package
-COPY --from=build /root/tensorflow /root/tensorflow
-COPY run-tflite.sh /
-COPY benchmark-tflite.sh /
-COPY install-gstreamer.sh /
-RUN chmod +x /*.sh
-
 # Remove cached files
 RUN rm ~/.cache -rf
 RUN apt clean
 
-# Test tensorflow
-RUN cd ~/tensorflow/lite/examples/label_image ; \
-    ./label_image --image=grace_hopper.bmp
 
 ENTRYPOINT [ "/bin/bash", "-l", "-c" ]
 
 #######################################################################
 
-FROM deploy AS fastrpc-deploy
+FROM deploy AS fastrpc-build-deploy
+
+# Update
+RUN DEBIAN_FRONTEND=noninteractive apt-get update
+
+# Install libraries needed for fastrpc built-from-source
+RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install libyaml-0-2 libbsd0
+
+# Copy fastrpc, host side libraries and DSP side libraries from the fastrpc-build layer
+COPY --from=fastrpc-build /opt/fastrpc/usr /usr/
+RUN ldconfig
+RUN find /usr | grep fastrpc
+
+# Copy QNN host side libraries and DSP side libraries from the qnn-install layer
+COPY --from=qnn-install /usr/local/lib /usr/local/lib
+RUN find /usr/local/lib
+
+# Copy over DSP libraries
+COPY --from=qnn-install /usr/lib/dsp /usr/lib/dsp
+RUN find /usr/lib/dsp
+
+# Remove cached files
+RUN rm ~/.cache -rf
+RUN apt clean
+
+#######################################################################
+
+FROM deploy AS fastrpc-deb-deploy
 
 # FastRPC's domain-neutral override reaches the QNN skeletons kept in their
 # CDSP-specific subdirectory without relying on its legacy ADSP-named alias.
@@ -235,16 +212,14 @@ EOF
 # Update
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 
-# Install the FastRPC userspace and its executable CDSP diagnostics.
 RUN DEBIAN_FRONTEND=noninteractive apt -y --no-install-recommends install fastrpc-tests
 
-# Copy QNN host side libraries and DSP side libraries from the fastrpc-build layer
-COPY --from=fastrpc-build /usr/local/lib /usr/local/lib
+# Copy QNN host side libraries and DSP side libraries from the qnn-install layer
+COPY --from=qnn-install /usr/local/lib /usr/local/lib
 RUN find /usr/local/lib
 
 # Copy over DSP libraries
-COPY --from=fastrpc-build /usr/lib/dsp /usr/lib/dsp
-COPY --from=fastrpc-build /usr/share/aiml-container /usr/share/aiml-container
+COPY --from=qnn-install /usr/lib/dsp /usr/lib/dsp
 RUN find /usr/lib/dsp
 
 # Remove cached files
